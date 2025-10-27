@@ -22,8 +22,10 @@ pydantic[email]==2.5.3
 
 # AI & LangChain
 langchain==0.1.5
-langchain-anthropic==0.1.1
-anthropic==0.18.1
+
+# HTTP Clients (for OpenRouter API)
+requests==2.32.3
+aiohttp==3.9.1
 
 # Utilities
 python-dotenv==1.0.0

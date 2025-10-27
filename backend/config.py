@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Anthropic API
-    ANTHROPIC_API_KEY: str
+    # OpenRouter API (for Claude access)
+    OPENROUTER_API_KEY: str
 
     # JWT Authentication
     SECRET_KEY: str
