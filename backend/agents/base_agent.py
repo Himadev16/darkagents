@@ -8,8 +8,10 @@ import json
 
 from langchain.memory import ConversationBufferMemory
 from sqlalchemy.orm import Session
+import asyncio
 
 from backend.services.claude_service import claude_service
+from backend.services.websocket_service import ws_manager
 from backend.database import (
     AgentExecution, AgentCommunication, UsageMetric, Project
 )
@@ -163,7 +165,7 @@ Always stay in character and perform your role with excellence."""
         progress: float,
         db: Session
     ):
-        """Update agent execution status"""
+        """Update agent execution status and broadcast via WebSocket"""
         execution.status = status
         execution.current_task = task
         execution.progress = progress
@@ -181,6 +183,24 @@ Always stay in character and perform your role with excellence."""
             task=task,
             progress=progress
         )
+
+        # Broadcast real-time update via WebSocket
+        try:
+            asyncio.create_task(
+                ws_manager.broadcast_agent_status(
+                    project_id=execution.project_id,
+                    agent_name=self.name,
+                    agent_display_name=self.display_name,
+                    status=status.value,
+                    current_task=task,
+                    progress=progress,
+                    tokens_used=execution.tokens_used,
+                    cost_usd=execution.cost_usd
+                )
+            )
+        except RuntimeError:
+            # No event loop running (sync context), skip WebSocket broadcast
+            pass
 
     def chat(
         self,

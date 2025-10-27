@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 from backend.config import settings
 from backend.database import init_db
-from backend.api.routes import auth, projects
+from backend.api.routes import auth, projects, websocket, agents
 
 
 @asynccontextmanager
@@ -53,6 +53,8 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(projects.router)
+app.include_router(websocket.router)
+app.include_router(agents.router)
 
 
 @app.get("/")
