@@ -78,7 +78,7 @@ export default function DashboardPage({ params }: PageProps) {
   }, [isConnected]);
 
   // Start PM Agent
-  const handleStartAgent = async () => {
+  const handleStartPMAgent = async () => {
     try {
       setIsExecuting(true);
       setError(null);
@@ -86,6 +86,27 @@ export default function DashboardPage({ params }: PageProps) {
       await apiClient.executeAgent(projectId, "product_manager", {});
 
       console.log("🚀 PM Agent execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  // Start Polyglot Agent
+  const handleStartPolyglotAgent = async (taskType: string = "code_generation") => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      await apiClient.executeAgent(projectId, "polyglot_agent", {
+        task_type: taskType,
+        language: "python",
+        requirements: "Create a FastAPI REST API with JWT authentication, user CRUD operations, and PostgreSQL database integration using SQLAlchemy 2.0."
+      });
+
+      console.log("🚀 Polyglot Agent execution started");
     } catch (err: any) {
       console.error("Failed to start agent:", err);
       setError(err.message || "Failed to start agent");
@@ -103,6 +124,18 @@ export default function DashboardPage({ params }: PageProps) {
   const pmAgent = agents["product_manager"] || {
     agent_name: "product_manager",
     agent_display_name: "Product Manager",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
+  // Get Polyglot agent specifically
+  const polyglotAgent = agents["polyglot_agent"] || {
+    agent_name: "polyglot_agent",
+    agent_display_name: "Polyglot Agent",
     status: "idle" as const,
     current_task: null,
     progress: 0,
@@ -153,7 +186,7 @@ export default function DashboardPage({ params }: PageProps) {
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={1}
+          totalAgents={2}
         />
       </div>
 
@@ -167,54 +200,97 @@ export default function DashboardPage({ params }: PageProps) {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Agent Card (2/3 width) */}
+        {/* Agent Cards (2/3 width) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Start Button */}
-          {pmAgent.status === "idle" && (
-            <button
-              onClick={handleStartAgent}
-              disabled={isExecuting || connectionStatus !== "connected"}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
-            >
-              <Play className="w-5 h-5" />
-              {isExecuting ? "Starting PM Agent..." : "Start Product Manager Agent"}
-            </button>
-          )}
+          {/* Product Manager Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Rocket className="w-6 h-6 text-blue-400" />
+              Product Manager Agent
+            </h2>
+            {pmAgent.status === "idle" && (
+              <button
+                onClick={handleStartPMAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Start PM Agent"}
+              </button>
+            )}
+            <AgentCard
+              agentName={pmAgent.agent_name}
+              agentDisplayName={pmAgent.agent_display_name}
+              status={pmAgent.status}
+              currentTask={pmAgent.current_task}
+              progress={pmAgent.progress}
+              tokensUsed={pmAgent.tokens_used}
+              costUsd={pmAgent.cost_usd}
+              etaSeconds={pmAgent.eta_seconds}
+            />
+          </div>
 
-          {/* PM Agent Card */}
-          <AgentCard
-            agentName={pmAgent.agent_name}
-            agentDisplayName={pmAgent.agent_display_name}
-            status={pmAgent.status}
-            currentTask={pmAgent.current_task}
-            progress={pmAgent.progress}
-            tokensUsed={pmAgent.tokens_used}
-            costUsd={pmAgent.cost_usd}
-            etaSeconds={pmAgent.eta_seconds}
-          />
+          {/* Polyglot Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">💎</span>
+              Polyglot Agent - Elite Multi-Language Coding AI
+            </h2>
+            {polyglotAgent.status === "idle" && (
+              <button
+                onClick={() => handleStartPolyglotAgent("code_generation")}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Generate Python FastAPI Code"}
+              </button>
+            )}
+            <AgentCard
+              agentName={polyglotAgent.agent_name}
+              agentDisplayName={polyglotAgent.agent_display_name}
+              status={polyglotAgent.status}
+              currentTask={polyglotAgent.current_task}
+              progress={polyglotAgent.progress}
+              tokensUsed={polyglotAgent.tokens_used}
+              costUsd={polyglotAgent.cost_usd}
+              etaSeconds={polyglotAgent.eta_seconds}
+            />
+          </div>
 
           {/* Instructions */}
-          {pmAgent.status === "idle" && (
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-6">
-              <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+          {pmAgent.status === "idle" && polyglotAgent.status === "idle" && (
+            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
+              <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
-                How to Use
+                How to Use DARKAGENTS
               </h3>
-              <ol className="text-gray-300 space-y-2 text-sm">
-                <li>1. Click "Start Product Manager Agent" above</li>
-                <li>2. Watch the agent card light up in real-time</li>
-                <li>3. See progress bar move from 0% → 100%</li>
-                <li>4. Monitor tokens and cost as they increment</li>
-                <li>5. View agent communications in the log</li>
-                <li>6. When complete, download the generated PRD</li>
-              </ol>
+              <div className="text-gray-300 space-y-3 text-sm">
+                <div>
+                  <p className="font-semibold text-blue-400">Product Manager Agent:</p>
+                  <p>Analyzes ideas and creates comprehensive Product Requirements Documents</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-purple-400">Polyglot Agent:</p>
+                  <p>Elite multi-language coder supporting 20+ languages. Generates production-ready code, reviews, debugs, refactors, tests, optimizes, and translates code between languages.</p>
+                </div>
+                <div className="mt-4 p-3 bg-gray-800/50 rounded">
+                  <p className="font-semibold text-white mb-1">Real-time Monitoring:</p>
+                  <ol className="space-y-1 ml-4 list-decimal">
+                    <li>Click any "Start" button above</li>
+                    <li>Watch agent cards light up in real-time</li>
+                    <li>Monitor progress bars, tokens, and costs</li>
+                    <li>View communications in the right panel</li>
+                  </ol>
+                </div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Communication Log (1/3 width) */}
         <div className="lg:col-span-1">
-          <CommunicationLog messages={communications} maxHeight="600px" />
+          <CommunicationLog messages={communications} maxHeight="800px" />
         </div>
       </div>
 
