@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -54,6 +54,8 @@ def execute_agent_async(
         agent = None
         if agent_name == "product_manager":
             agent = ProductManagerAgent()
+        elif agent_name == "polyglot_agent":
+            agent = PolyglotAgent()
         # Add more agents here as we implement them
         # elif agent_name == "system_architect":
         #     agent = SystemArchitectAgent()
@@ -134,6 +136,7 @@ async def execute_agent(
     # Validate agent name
     valid_agents = [
         "product_manager",
+        "polyglot_agent",
         # Add more as we implement them
         # "system_architect",
         # "backend_developer",
@@ -194,6 +197,27 @@ async def list_available_agents():
                 "Feature Prioritization Matrix",
                 "Success Metrics",
                 "Competitive Analysis"
+            ]
+        },
+        {
+            "name": "polyglot_agent",
+            "display_name": "Polyglot Agent",
+            "role": "Elite Multi-Language Software Engineer & Code Architect",
+            "status": "available",
+            "capabilities": [
+                "Multi-language code generation (20+ languages)",
+                "Code review and refactoring",
+                "Debugging and problem-solving",
+                "Test generation (unit, integration, e2e)",
+                "Performance optimization",
+                "Security analysis",
+                "Cross-language code translation",
+                "Architecture recommendations"
+            ],
+            "languages": [
+                "Python", "JavaScript", "TypeScript", "Go", "Rust", "Java",
+                "C++", "C#", "Ruby", "PHP", "Swift", "Kotlin", "Dart",
+                "Scala", "Elixir", "Haskell", "Clojure", "Julia", "Lua", "R"
             ]
         },
         # Add more agents as we implement them

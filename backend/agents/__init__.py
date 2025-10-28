@@ -4,8 +4,10 @@ DARKAGENTS Agents Package
 """
 from backend.agents.base_agent import BaseAgent
 from backend.agents.product_manager import ProductManagerAgent
+from backend.agents.polyglot_agent import PolyglotAgent
 
 __all__ = [
     "BaseAgent",
     "ProductManagerAgent",
+    "PolyglotAgent",
 ]
