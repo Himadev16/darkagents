@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent, DevOpsEngineerAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -64,6 +64,8 @@ def execute_agent_async(
             agent = QAEngineerAgent()
         elif agent_name == "security_specialist":
             agent = SecuritySpecialistAgent()
+        elif agent_name == "devops_engineer":
+            agent = DevOpsEngineerAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -147,9 +149,10 @@ async def execute_agent(
         "ui_ux_designer",
         "qa_engineer",
         "security_specialist",
+        "devops_engineer",
         # Add more as we implement them
-        # "devops_engineer",
         # "growth_marketer",
+        # "business_strategist",
         # etc.
     ]
 
@@ -346,6 +349,47 @@ async def list_available_agents():
             ],
             "input": "Complete codebase from Polyglot + Designer + QA agents",
             "output": "Security audit report + vulnerabilities + compliance status"
+        },
+        {
+            "name": "devops_engineer",
+            "display_name": "DevOps Engineer",
+            "role": "Senior DevOps engineer - Generates deployment config and CI/CD pipelines",
+            "status": "available",
+            "deliverables": [
+                "Docker Configuration (Dockerfile, docker-compose.yml)",
+                "CI/CD Pipeline (GitHub Actions, GitLab CI, Jenkins)",
+                "Deployment Configuration (Vercel, Railway, AWS, GCP)",
+                "Environment Configuration (.env templates)",
+                "Monitoring Setup (logging, alerts, health checks)",
+                "Deployment Documentation (setup, rollback, troubleshooting)"
+            ],
+            "deployment_targets": [
+                "Vercel (Next.js frontend)",
+                "Railway (FastAPI backend + PostgreSQL)",
+                "AWS (EC2, ECS, Lambda)",
+                "GCP (Cloud Run, App Engine)",
+                "Azure (App Service)",
+                "DigitalOcean (Droplets, App Platform)"
+            ],
+            "ci_cd_platforms": [
+                "GitHub Actions",
+                "GitLab CI",
+                "Jenkins",
+                "CircleCI"
+            ],
+            "features": [
+                "Multi-stage Docker builds",
+                "Automated testing in CI/CD",
+                "Health check endpoints",
+                "Graceful shutdown handling",
+                "Rolling deployments",
+                "Rollback mechanisms",
+                "Monitoring integration",
+                "Retry logic with exponential backoff",
+                "Production-grade error handling"
+            ],
+            "input": "Complete codebase + architecture from all previous agents",
+            "output": "Deployment package + CI/CD pipeline + monitoring setup"
         },
         # Add more agents as we implement them
     ]
