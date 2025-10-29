@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent, DevOpsEngineerAgent, GrowthMarketerAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent, DevOpsEngineerAgent, GrowthMarketerAgent, BusinessStrategistAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -68,6 +68,8 @@ def execute_agent_async(
             agent = DevOpsEngineerAgent()
         elif agent_name == "growth_marketer":
             agent = GrowthMarketerAgent()
+        elif agent_name == "business_strategist":
+            agent = BusinessStrategistAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -153,8 +155,8 @@ async def execute_agent(
         "security_specialist",
         "devops_engineer",
         "growth_marketer",
+        "business_strategist",
         # Add more as we implement them
-        # "business_strategist",
         # "platform_orchestrator",
         # etc.
     ]
@@ -442,6 +444,57 @@ async def list_available_agents():
             ],
             "input": "Product details from PM, Architect, Designer agents",
             "output": "Complete growth marketing package ready for execution"
+        },
+        {
+            "name": "business_strategist",
+            "display_name": "Business Strategist",
+            "role": "Senior business strategist - Develops business model and financial strategy",
+            "status": "available",
+            "deliverables": [
+                "Business Model Canvas (9 building blocks)",
+                "Revenue Model (streams, tiers, 24-month projections)",
+                "Pricing Strategy (analysis, psychology, competitive comparison)",
+                "Competitive Analysis (SWOT, Porter's Five Forces, positioning)",
+                "Financial Model (P&L, cash flow, burn rate, runway)",
+                "Market Sizing (TAM, SAM, SOM with calculations)",
+                "Unit Economics (CAC, LTV, payback period, margins)",
+                "Funding Strategy (options, timeline, milestones)",
+                "Growth Roadmap (12-month plan with quarterly milestones)",
+                "Risk Analysis (top risks with mitigation strategies)"
+            ],
+            "frameworks": [
+                "Business Model Canvas (9 blocks)",
+                "Financial Metrics (ARR, MRR, CAC, LTV, burn rate, runway)",
+                "Competitive Analysis (SWOT, Porter's Five Forces)",
+                "Market Sizing (TAM/SAM/SOM methodology)",
+                "Pricing Strategy (value-based, freemium, tiered, usage-based)",
+                "Unit Economics (LTV:CAC ratio, payback period, gross margin)",
+                "Funding Strategy (bootstrap, angel, seed, Series A)"
+            ],
+            "specialties": [
+                "SaaS business model development",
+                "Financial modeling and projections",
+                "Unit economics optimization (CAC, LTV, margins)",
+                "Competitive strategy and positioning",
+                "Pricing strategy and psychology",
+                "Market analysis and sizing",
+                "Fundraising strategy and planning",
+                "Risk assessment and mitigation"
+            ],
+            "features": [
+                "24-month revenue projections (3 scenarios)",
+                "Complete P&L and cash flow analysis",
+                "Unit economics with formulas and targets",
+                "Competitive positioning map",
+                "Pricing tier recommendations",
+                "Funding timeline with milestones",
+                "12-month growth roadmap",
+                "Risk analysis with mitigation plans",
+                "Retry logic with exponential backoff",
+                "Production-grade error handling"
+            ],
+            "input": "Product details, market info, financial assumptions from previous agents",
+            "output": "Comprehensive business strategy package with financial models"
         },
         # Add more agents as we implement them
     ]

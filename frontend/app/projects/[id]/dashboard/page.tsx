@@ -340,6 +340,50 @@ Build a modern SaaS platform with the following features:
     }
   };
 
+  // Start Business Strategist Agent
+  const handleStartBusinessStrategistAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get product and market details from previous agents
+      const pmAgentData = agents["product_manager"];
+      const architectAgentData = agents["system_architect"];
+      const growthMarketerAgentData = agents["growth_marketer"];
+
+      const productDetails = pmAgentData?.current_task || `
+Build a modern SaaS platform with the following features:
+- User authentication and authorization
+- Project management and collaboration
+- Real-time updates and notifications
+- Analytics and reporting dashboard
+- RESTful API with comprehensive documentation
+`;
+
+      const uniqueValueProposition = "All-in-one productivity platform with AI-powered automation and real-time collaboration";
+
+      await apiClient.executeAgent(projectId, "business_strategist", {
+        product_details: productDetails,
+        target_market: "B2B SaaS for startups and SMBs",
+        pricing_model: "freemium",
+        revenue_target: "$1M ARR in 24 months",
+        funding_stage: "bootstrapped",
+        team_size: 3,
+        burn_rate: 15000,
+        runway_months: 18,
+        competitors: ["Notion", "Airtable", "Monday.com"],
+        unique_value_proposition: uniqueValueProposition
+      });
+
+      console.log("🚀 Business Strategist execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -441,6 +485,18 @@ Build a modern SaaS platform with the following features:
     eta_seconds: null,
   };
 
+  // Get Business Strategist agent specifically
+  const businessStrategistAgent = agents["business_strategist"] || {
+    agent_name: "business_strategist",
+    agent_display_name: "Business Strategist",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       {/* Header */}
@@ -483,7 +539,7 @@ Build a modern SaaS platform with the following features:
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={8}
+          totalAgents={9}
         />
       </div>
 
@@ -723,8 +779,36 @@ Build a modern SaaS platform with the following features:
             />
           </div>
 
+          {/* Business Strategist Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">💼</span>
+              Agent 09: Business Strategist
+            </h2>
+            {businessStrategistAgent.status === "idle" && (
+              <button
+                onClick={handleStartBusinessStrategistAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Develop Business Model & Financial Strategy"}
+              </button>
+            )}
+            <AgentCard
+              agentName={businessStrategistAgent.agent_name}
+              agentDisplayName={businessStrategistAgent.agent_display_name}
+              status={businessStrategistAgent.status}
+              currentTask={businessStrategistAgent.current_task}
+              progress={businessStrategistAgent.progress}
+              tokensUsed={businessStrategistAgent.tokens_used}
+              costUsd={businessStrategistAgent.cost_usd}
+              etaSeconds={businessStrategistAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && growthMarketerAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && growthMarketerAgent.status === "idle" && businessStrategistAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -763,6 +847,10 @@ Build a modern SaaS platform with the following features:
                   <p className="font-semibold text-green-400">Agent 08: Growth Marketer</p>
                   <p>Senior growth marketer that develops go-to-market strategy, landing page copy, SEO strategy, customer acquisition plan, content marketing, email sequences, and growth experiments (A/B tests, funnel optimization)</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-indigo-400">Agent 09: Business Strategist</p>
+                  <p>Senior business strategist that develops business model canvas, revenue projections, pricing strategy, competitive analysis (SWOT, Porter's Five Forces), financial modeling (P&L, cash flow), and funding strategy</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
                   <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
@@ -774,6 +862,7 @@ Build a modern SaaS platform with the following features:
                     <li>Start Security Agent → Get Security Audit</li>
                     <li>Start DevOps Agent → Get Deployment Package</li>
                     <li>Start Growth Marketer → Get Marketing Assets</li>
+                    <li>Start Business Strategist → Get Business Model & Financial Plan</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>
