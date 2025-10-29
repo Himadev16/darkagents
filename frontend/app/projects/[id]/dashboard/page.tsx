@@ -384,6 +384,46 @@ Build a modern SaaS platform with the following features:
     }
   };
 
+  // Start Platform Orchestrator Agent (FINAL AGENT!)
+  const handleStartPlatformOrchestratorAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Collect outputs from ALL previous agents
+      const pmAgentData = agents["product_manager"];
+      const architectAgentData = agents["system_architect"];
+      const polyglotAgentData = agents["polyglot_agent"];
+      const designerAgentData = agents["ui_ux_designer"];
+      const qaAgentData = agents["qa_engineer"];
+      const securityAgentData = agents["security_specialist"];
+      const devopsAgentData = agents["devops_engineer"];
+      const growthMarketerAgentData = agents["growth_marketer"];
+      const businessStrategistAgentData = agents["business_strategist"];
+
+      await apiClient.executeAgent(projectId, "platform_orchestrator", {
+        pm_output: pmAgentData?.current_task || "",
+        architect_output: architectAgentData?.current_task || "",
+        polyglot_output: polyglotAgentData?.current_task || "",
+        designer_output: designerAgentData?.current_task || "",
+        qa_output: qaAgentData?.current_task || "",
+        security_output: securityAgentData?.current_task || "",
+        devops_output: devopsAgentData?.current_task || "",
+        growth_output: growthMarketerAgentData?.current_task || "",
+        business_output: businessStrategistAgentData?.current_task || "",
+        project_name: "DARKAGENTS SaaS Project",
+        delivery_format: "comprehensive"
+      });
+
+      console.log("🚀 Platform Orchestrator execution started - FINAL PACKAGE ASSEMBLY!");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -497,6 +537,18 @@ Build a modern SaaS platform with the following features:
     eta_seconds: null,
   };
 
+  // Get Platform Orchestrator agent specifically (FINAL AGENT!)
+  const platformOrchestratorAgent = agents["platform_orchestrator"] || {
+    agent_name: "platform_orchestrator",
+    agent_display_name: "Platform Orchestrator",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       {/* Header */}
@@ -539,7 +591,7 @@ Build a modern SaaS platform with the following features:
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={9}
+          totalAgents={10}
         />
       </div>
 
@@ -807,8 +859,36 @@ Build a modern SaaS platform with the following features:
             />
           </div>
 
+          {/* Platform Orchestrator Agent Section (FINAL AGENT!) */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Rocket className="w-6 h-6 text-yellow-400 animate-pulse" />
+              Agent 10: Platform Orchestrator (FINAL!)
+            </h2>
+            {platformOrchestratorAgent.status === "idle" && (
+              <button
+                onClick={handleStartPlatformOrchestratorAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-yellow-600 via-orange-600 to-red-600 hover:from-yellow-700 hover:via-orange-700 hover:to-red-700 disabled:from-gray-600 disabled:to-gray-700 text-white font-bold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-2xl hover:shadow-3xl disabled:cursor-not-allowed animate-pulse hover:animate-none"
+              >
+                <Rocket className="w-6 h-6" />
+                {isExecuting ? "Assembling..." : "Assemble Complete SaaS Business Package"}
+              </button>
+            )}
+            <AgentCard
+              agentName={platformOrchestratorAgent.agent_name}
+              agentDisplayName={platformOrchestratorAgent.agent_display_name}
+              status={platformOrchestratorAgent.status}
+              currentTask={platformOrchestratorAgent.current_task}
+              progress={platformOrchestratorAgent.progress}
+              tokensUsed={platformOrchestratorAgent.tokens_used}
+              costUsd={platformOrchestratorAgent.cost_usd}
+              etaSeconds={platformOrchestratorAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && growthMarketerAgent.status === "idle" && businessStrategistAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && growthMarketerAgent.status === "idle" && businessStrategistAgent.status === "idle" && platformOrchestratorAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -851,8 +931,12 @@ Build a modern SaaS platform with the following features:
                   <p className="font-semibold text-indigo-400">Agent 09: Business Strategist</p>
                   <p>Senior business strategist that develops business model canvas, revenue projections, pricing strategy, competitive analysis (SWOT, Porter's Five Forces), financial modeling (P&L, cash flow), and funding strategy</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-yellow-400 animate-pulse">Agent 10: Platform Orchestrator (FINAL!)</p>
+                  <p>Senior orchestrator that assembles complete SaaS business package with executive summary, project structure, documentation (README, API docs), deployment checklists, QA checklists, handoff materials, cost summary, and next-step roadmap</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
-                  <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
+                  <p className="font-semibold text-white mb-1">Complete Workflow (Sequential - All 10 Agents):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
                     <li>Start PM Agent → Get PRD</li>
                     <li>Start Architect Agent → Get System Design</li>
@@ -863,9 +947,14 @@ Build a modern SaaS platform with the following features:
                     <li>Start DevOps Agent → Get Deployment Package</li>
                     <li>Start Growth Marketer → Get Marketing Assets</li>
                     <li>Start Business Strategist → Get Business Model & Financial Plan</li>
+                    <li className="text-yellow-400 font-bold">Start Platform Orchestrator → Get COMPLETE SaaS Business Package!</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>
+                </div>
+                <div className="mt-4 p-3 bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/50 rounded">
+                  <p className="font-bold text-yellow-300 mb-2">🎉 All 10 Agents Complete!</p>
+                  <p className="text-gray-200 text-sm">DARKAGENTS is your AI Product Factory - Get what a $200K dev team builds in 6 months, delivered in 1 hour for $299-999. Complete with PRD, architecture, code, design, tests, security audit, deployment, marketing, and business plan!</p>
                 </div>
               </div>
             </div>
