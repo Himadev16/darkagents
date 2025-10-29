@@ -298,6 +298,48 @@ def get_users():
     }
   };
 
+  // Start Growth Marketer Agent
+  const handleStartGrowthMarketerAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get product details from PM, Architect, and Designer agents
+      const pmAgentData = agents["product_manager"];
+      const architectAgentData = agents["system_architect"];
+      const designerAgentData = agents["ui_ux_designer"];
+
+      const productDetails = pmAgentData?.current_task || `
+Build a modern SaaS platform with the following features:
+- User authentication and authorization
+- Project management and collaboration
+- Real-time updates and notifications
+- Analytics and reporting dashboard
+- RESTful API with comprehensive documentation
+`;
+
+      const valueProposition = "Simplify complex workflows and boost team productivity with an all-in-one collaboration platform";
+
+      await apiClient.executeAgent(projectId, "growth_marketer", {
+        product_details: productDetails,
+        target_audience: "Startups and SMBs looking for productivity tools",
+        value_proposition: valueProposition,
+        pricing_model: "freemium",
+        budget_range: "$0-1K/month",
+        growth_stage: "pre-launch",
+        competitors: ["Notion", "Airtable", "Monday.com"],
+        unique_features: ["AI-powered automation", "Real-time collaboration", "Intuitive UI"]
+      });
+
+      console.log("🚀 Growth Marketer execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -387,6 +429,18 @@ def get_users():
     eta_seconds: null,
   };
 
+  // Get Growth Marketer agent specifically
+  const growthMarketerAgent = agents["growth_marketer"] || {
+    agent_name: "growth_marketer",
+    agent_display_name: "Growth Marketer",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       {/* Header */}
@@ -429,7 +483,7 @@ def get_users():
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={7}
+          totalAgents={8}
         />
       </div>
 
@@ -641,8 +695,36 @@ def get_users():
             />
           </div>
 
+          {/* Growth Marketer Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">📈</span>
+              Agent 08: Growth Marketer
+            </h2>
+            {growthMarketerAgent.status === "idle" && (
+              <button
+                onClick={handleStartGrowthMarketerAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Develop GTM Strategy & Marketing Assets"}
+              </button>
+            )}
+            <AgentCard
+              agentName={growthMarketerAgent.agent_name}
+              agentDisplayName={growthMarketerAgent.agent_display_name}
+              status={growthMarketerAgent.status}
+              currentTask={growthMarketerAgent.current_task}
+              progress={growthMarketerAgent.progress}
+              tokensUsed={growthMarketerAgent.tokens_used}
+              costUsd={growthMarketerAgent.cost_usd}
+              etaSeconds={growthMarketerAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && devopsAgent.status === "idle" && growthMarketerAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -677,6 +759,10 @@ def get_users():
                   <p className="font-semibold text-cyan-400">Agent 07: DevOps Engineer</p>
                   <p>Senior DevOps engineer that generates Docker configuration, CI/CD pipelines (GitHub Actions), deployment configs for Vercel/Railway/AWS, and monitoring setup with production-ready infrastructure</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-green-400">Agent 08: Growth Marketer</p>
+                  <p>Senior growth marketer that develops go-to-market strategy, landing page copy, SEO strategy, customer acquisition plan, content marketing, email sequences, and growth experiments (A/B tests, funnel optimization)</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
                   <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
@@ -687,6 +773,7 @@ def get_users():
                     <li>Start QA Agent → Get Tests & Bug Reports</li>
                     <li>Start Security Agent → Get Security Audit</li>
                     <li>Start DevOps Agent → Get Deployment Package</li>
+                    <li>Start Growth Marketer → Get Marketing Assets</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>

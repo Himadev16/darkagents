@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent, DevOpsEngineerAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent, DevOpsEngineerAgent, GrowthMarketerAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -66,6 +66,8 @@ def execute_agent_async(
             agent = SecuritySpecialistAgent()
         elif agent_name == "devops_engineer":
             agent = DevOpsEngineerAgent()
+        elif agent_name == "growth_marketer":
+            agent = GrowthMarketerAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -150,9 +152,10 @@ async def execute_agent(
         "qa_engineer",
         "security_specialist",
         "devops_engineer",
+        "growth_marketer",
         # Add more as we implement them
-        # "growth_marketer",
         # "business_strategist",
+        # "platform_orchestrator",
         # etc.
     ]
 
@@ -390,6 +393,55 @@ async def list_available_agents():
             ],
             "input": "Complete codebase + architecture from all previous agents",
             "output": "Deployment package + CI/CD pipeline + monitoring setup"
+        },
+        {
+            "name": "growth_marketer",
+            "display_name": "Growth Marketer",
+            "role": "Senior growth marketer - Develops GTM strategy and marketing assets",
+            "status": "available",
+            "deliverables": [
+                "Go-to-Market (GTM) Strategy",
+                "Landing Page Copy (headlines, CTAs, sections)",
+                "SEO Strategy (keywords, meta tags, content plan)",
+                "Customer Acquisition Plan (channels, tactics, budget)",
+                "Content Marketing Strategy (blog, tutorials, case studies)",
+                "Email Marketing Sequences (onboarding, nurture, retention)",
+                "Social Media Strategy (LinkedIn, Twitter/X, Product Hunt)",
+                "Growth Experiments (A/B tests, funnel optimization)",
+                "Pricing Page Optimization",
+                "Metrics Dashboard (CAC, LTV, conversion rates)"
+            ],
+            "channels": [
+                "SEO & Content Marketing",
+                "Paid Advertising (Google, LinkedIn, Facebook)",
+                "Social Media (LinkedIn, Twitter/X, Product Hunt)",
+                "Email Marketing",
+                "Referral & Viral Growth",
+                "Community Building",
+                "Partnerships & Integrations"
+            ],
+            "specialties": [
+                "SaaS go-to-market strategy",
+                "Conversion copywriting",
+                "Growth experiment design",
+                "Product-led growth (PLG)",
+                "Customer acquisition optimization",
+                "Retention and engagement",
+                "Analytics and metrics (CAC, LTV, conversion rates)"
+            ],
+            "features": [
+                "Benefit-driven copy for landing pages",
+                "SEO-optimized content strategy",
+                "Channel prioritization by ROI",
+                "A/B test recommendations",
+                "Email sequence templates",
+                "Social media launch tactics",
+                "Metrics dashboard with KPI targets",
+                "Retry logic with exponential backoff",
+                "Production-grade error handling"
+            ],
+            "input": "Product details from PM, Architect, Designer agents",
+            "output": "Complete growth marketing package ready for execution"
         },
         # Add more agents as we implement them
     ]

@@ -10,6 +10,7 @@ from backend.agents.ui_ux_designer_agent import UIUXDesignerAgent
 from backend.agents.qa_engineer_agent import QAEngineerAgent
 from backend.agents.security_specialist_agent import SecuritySpecialistAgent
 from backend.agents.devops_engineer_agent import DevOpsEngineerAgent
+from backend.agents.growth_marketer_agent import GrowthMarketerAgent
 
 __all__ = [
     "BaseAgent",
@@ -20,4 +21,5 @@ __all__ = [
     "QAEngineerAgent",
     "SecuritySpecialistAgent",
     "DevOpsEngineerAgent",
+    "GrowthMarketerAgent",
 ]
