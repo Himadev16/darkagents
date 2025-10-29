@@ -94,6 +94,31 @@ export default function DashboardPage({ params }: PageProps) {
     }
   };
 
+  // Start System Architect Agent
+  const handleStartArchitectAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get PRD from PM Agent if available
+      const pmAgentData = agents["product_manager"];
+      const prd = pmAgentData?.current_task || "Build a SaaS application for task management with user authentication, project creation, and team collaboration features.";
+
+      await apiClient.executeAgent(projectId, "system_architect", {
+        prd: prd,
+        target_users: "Startups and small businesses",
+        expected_scale: "1K-50K users"
+      });
+
+      console.log("🚀 System Architect execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Start Polyglot Agent
   const handleStartPolyglotAgent = async (taskType: string = "code_generation") => {
     try {
@@ -124,6 +149,18 @@ export default function DashboardPage({ params }: PageProps) {
   const pmAgent = agents["product_manager"] || {
     agent_name: "product_manager",
     agent_display_name: "Product Manager",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
+  // Get System Architect agent specifically
+  const architectAgent = agents["system_architect"] || {
+    agent_name: "system_architect",
+    agent_display_name: "System Architect",
     status: "idle" as const,
     current_task: null,
     progress: 0,
@@ -186,7 +223,7 @@ export default function DashboardPage({ params }: PageProps) {
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={2}
+          totalAgents={3}
         />
       </div>
 
@@ -206,7 +243,7 @@ export default function DashboardPage({ params }: PageProps) {
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Rocket className="w-6 h-6 text-blue-400" />
-              Product Manager Agent
+              Agent 01: Product Manager
             </h2>
             {pmAgent.status === "idle" && (
               <button
@@ -230,11 +267,39 @@ export default function DashboardPage({ params }: PageProps) {
             />
           </div>
 
+          {/* System Architect Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">🏗️</span>
+              Agent 02: System Architect
+            </h2>
+            {architectAgent.status === "idle" && (
+              <button
+                onClick={handleStartArchitectAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Design System Architecture"}
+              </button>
+            )}
+            <AgentCard
+              agentName={architectAgent.agent_name}
+              agentDisplayName={architectAgent.agent_display_name}
+              status={architectAgent.status}
+              currentTask={architectAgent.current_task}
+              progress={architectAgent.progress}
+              tokensUsed={architectAgent.tokens_used}
+              costUsd={architectAgent.cost_usd}
+              etaSeconds={architectAgent.eta_seconds}
+            />
+          </div>
+
           {/* Polyglot Agent Section */}
           <div className="space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <span className="text-2xl">💎</span>
-              Polyglot Agent - Elite Multi-Language Coding AI
+              Agent 03: Polyglot Developer
             </h2>
             {polyglotAgent.status === "idle" && (
               <button
@@ -243,7 +308,7 @@ export default function DashboardPage({ params }: PageProps) {
                 className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
               >
                 <Play className="w-5 h-5" />
-                {isExecuting ? "Starting..." : "Generate Python FastAPI Code"}
+                {isExecuting ? "Starting..." : "Generate Full-Stack Code"}
               </button>
             )}
             <AgentCard
@@ -259,28 +324,33 @@ export default function DashboardPage({ params }: PageProps) {
           </div>
 
           {/* Instructions */}
-          {pmAgent.status === "idle" && polyglotAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
-                How to Use DARKAGENTS
+                How to Use DARKAGENTS - Your AI Product Factory
               </h3>
               <div className="text-gray-300 space-y-3 text-sm">
                 <div>
-                  <p className="font-semibold text-blue-400">Product Manager Agent:</p>
-                  <p>Analyzes ideas and creates comprehensive Product Requirements Documents</p>
+                  <p className="font-semibold text-blue-400">Agent 01: Product Manager</p>
+                  <p>Transforms ideas into comprehensive Product Requirements Documents (PRD) with user personas, stories, success metrics, and competitive analysis</p>
                 </div>
                 <div>
-                  <p className="font-semibold text-purple-400">Polyglot Agent:</p>
-                  <p>Elite multi-language coder supporting 20+ languages. Generates production-ready code, reviews, debugs, refactors, tests, optimizes, and translates code between languages.</p>
+                  <p className="font-semibold text-emerald-400">Agent 02: System Architect</p>
+                  <p>Senior technical architect that designs complete system architecture including database schema, API specs, tech stack, security architecture, and cost estimates</p>
+                </div>
+                <div>
+                  <p className="font-semibold text-purple-400">Agent 03: Polyglot Developer</p>
+                  <p>Elite multi-language coder supporting 20+ languages. Generates production-ready full-stack code, reviews, debugs, refactors, tests, optimizes, and translates between languages</p>
                 </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
-                  <p className="font-semibold text-white mb-1">Real-time Monitoring:</p>
+                  <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
-                    <li>Click any "Start" button above</li>
-                    <li>Watch agent cards light up in real-time</li>
-                    <li>Monitor progress bars, tokens, and costs</li>
-                    <li>View communications in the right panel</li>
+                    <li>Start PM Agent → Get PRD</li>
+                    <li>Start Architect Agent → Get System Design</li>
+                    <li>Start Polyglot Agent → Get Production Code</li>
+                    <li>Watch real-time progress in agent cards</li>
+                    <li>Monitor tokens, costs, and communications</li>
                   </ol>
                 </div>
               </div>

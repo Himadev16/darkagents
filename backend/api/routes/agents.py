@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -54,11 +54,11 @@ def execute_agent_async(
         agent = None
         if agent_name == "product_manager":
             agent = ProductManagerAgent()
+        elif agent_name == "system_architect":
+            agent = SystemArchitectAgent()
         elif agent_name == "polyglot_agent":
             agent = PolyglotAgent()
         # Add more agents here as we implement them
-        # elif agent_name == "system_architect":
-        #     agent = SystemArchitectAgent()
         else:
             logger.error("unknown_agent", agent_name=agent_name)
             return
@@ -136,10 +136,11 @@ async def execute_agent(
     # Validate agent name
     valid_agents = [
         "product_manager",
+        "system_architect",
         "polyglot_agent",
         # Add more as we implement them
-        # "system_architect",
-        # "backend_developer",
+        # "ui_ux_designer",
+        # "qa_engineer",
         # etc.
     ]
 
@@ -198,6 +199,30 @@ async def list_available_agents():
                 "Success Metrics",
                 "Competitive Analysis"
             ]
+        },
+        {
+            "name": "system_architect",
+            "display_name": "System Architect",
+            "role": "Senior technical architect - Designs complete system architecture",
+            "status": "available",
+            "deliverables": [
+                "Executive Summary",
+                "Database Schema (SQLAlchemy models)",
+                "API Specifications (REST endpoints)",
+                "Tech Stack Recommendations",
+                "Infrastructure Plan (CI/CD, deployment)",
+                "Security Architecture (OWASP, encryption)",
+                "Scalability Plan (caching, load balancing)",
+                "Cost Estimates (1K to 1M+ users)"
+            ],
+            "tech_stack": {
+                "backend": "FastAPI + SQLAlchemy + PostgreSQL",
+                "frontend": "Next.js 14 + TypeScript + Tailwind CSS",
+                "deployment": "Vercel (frontend) + Railway (backend)",
+                "auth": "JWT with refresh tokens",
+                "cache": "Redis (optional)",
+                "storage": "AWS S3 or Cloudflare R2"
+            }
         },
         {
             "name": "polyglot_agent",
