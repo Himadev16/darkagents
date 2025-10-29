@@ -140,6 +140,43 @@ export default function DashboardPage({ params }: PageProps) {
     }
   };
 
+  // Start UI/UX Designer Agent
+  const handleStartDesignerAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get frontend code from Polyglot Agent if available
+      const polyglotAgentData = agents["polyglot_agent"];
+      const frontendCode = polyglotAgentData?.current_task || `
+// Sample Next.js component to enhance
+export default function Dashboard() {
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold">Dashboard</h1>
+      <button className="bg-blue-500 text-white px-4 py-2 rounded">
+        Click Me
+      </button>
+    </div>
+  );
+}`;
+
+      await apiClient.executeAgent(projectId, "ui_ux_designer", {
+        frontend_code: frontendCode,
+        design_style: "modern-minimalist",
+        color_scheme: "professional",
+        target_audience: "business professionals"
+      });
+
+      console.log("🚀 UI/UX Designer execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -173,6 +210,18 @@ export default function DashboardPage({ params }: PageProps) {
   const polyglotAgent = agents["polyglot_agent"] || {
     agent_name: "polyglot_agent",
     agent_display_name: "Polyglot Agent",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
+  // Get UI/UX Designer agent specifically
+  const designerAgent = agents["ui_ux_designer"] || {
+    agent_name: "ui_ux_designer",
+    agent_display_name: "UI/UX Designer",
     status: "idle" as const,
     current_task: null,
     progress: 0,
@@ -223,7 +272,7 @@ export default function DashboardPage({ params }: PageProps) {
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={3}
+          totalAgents={4}
         />
       </div>
 
@@ -323,8 +372,36 @@ export default function DashboardPage({ params }: PageProps) {
             />
           </div>
 
+          {/* UI/UX Designer Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">🎨</span>
+              Agent 04: UI/UX Designer
+            </h2>
+            {designerAgent.status === "idle" && (
+              <button
+                onClick={handleStartDesignerAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-pink-600 to-rose-700 hover:from-pink-700 hover:to-rose-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Polish UI Design"}
+              </button>
+            )}
+            <AgentCard
+              agentName={designerAgent.agent_name}
+              agentDisplayName={designerAgent.agent_display_name}
+              status={designerAgent.status}
+              currentTask={designerAgent.current_task}
+              progress={designerAgent.progress}
+              tokensUsed={designerAgent.tokens_used}
+              costUsd={designerAgent.cost_usd}
+              etaSeconds={designerAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -343,12 +420,17 @@ export default function DashboardPage({ params }: PageProps) {
                   <p className="font-semibold text-purple-400">Agent 03: Polyglot Developer</p>
                   <p>Elite multi-language coder supporting 20+ languages. Generates production-ready full-stack code, reviews, debugs, refactors, tests, optimizes, and translates between languages</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-pink-400">Agent 04: UI/UX Designer</p>
+                  <p>Senior product designer that polishes frontend code with professional UI design, animations, accessibility (WCAG 2.1 AA), and modern design patterns using Tailwind CSS</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
                   <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
                     <li>Start PM Agent → Get PRD</li>
                     <li>Start Architect Agent → Get System Design</li>
                     <li>Start Polyglot Agent → Get Production Code</li>
+                    <li>Start Designer Agent → Get Polished UI</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>

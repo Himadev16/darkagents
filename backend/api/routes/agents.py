@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -58,6 +58,8 @@ def execute_agent_async(
             agent = SystemArchitectAgent()
         elif agent_name == "polyglot_agent":
             agent = PolyglotAgent()
+        elif agent_name == "ui_ux_designer":
+            agent = UIUXDesignerAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -138,9 +140,10 @@ async def execute_agent(
         "product_manager",
         "system_architect",
         "polyglot_agent",
+        "ui_ux_designer",
         # Add more as we implement them
-        # "ui_ux_designer",
         # "qa_engineer",
+        # "security_specialist",
         # etc.
     ]
 
@@ -244,6 +247,30 @@ async def list_available_agents():
                 "C++", "C#", "Ruby", "PHP", "Swift", "Kotlin", "Dart",
                 "Scala", "Elixir", "Haskell", "Clojure", "Julia", "Lua", "R"
             ]
+        },
+        {
+            "name": "ui_ux_designer",
+            "display_name": "UI/UX Designer",
+            "role": "Senior product designer - Polishes UI with professional design and animations",
+            "status": "available",
+            "deliverables": [
+                "Design System (colors, typography, spacing, shadows)",
+                "Enhanced Component Design (buttons, forms, cards)",
+                "Animations & Micro-interactions (transitions, loading states)",
+                "Responsive Design Improvements (mobile-first)",
+                "Accessibility Enhancements (WCAG 2.1 AA compliance)",
+                "Modern UI Patterns (gradients, glassmorphism)"
+            ],
+            "specialties": [
+                "Tailwind CSS optimization",
+                "React/Next.js component design",
+                "Accessible design (ARIA labels, keyboard navigation)",
+                "Animation and micro-interactions",
+                "Mobile-first responsive design",
+                "Design systems and visual hierarchy"
+            ],
+            "input": "Frontend code from Polyglot Agent",
+            "output": "Enhanced code with professional design"
         },
         # Add more agents as we implement them
     ]
