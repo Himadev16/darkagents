@@ -213,6 +213,43 @@ def get_users():
     }
   };
 
+  // Start Security Specialist Agent
+  const handleStartSecurityAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get codebase from all previous agents
+      const polyglotAgentData = agents["polyglot_agent"];
+      const designerAgentData = agents["ui_ux_designer"];
+      const qaAgentData = agents["qa_engineer"];
+      const codebase = qaAgentData?.current_task || designerAgentData?.current_task || polyglotAgentData?.current_task || `
+# Sample code to audit
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/api/users")
+def get_users():
+    return {"users": []}
+`;
+
+      await apiClient.executeAgent(projectId, "security_specialist", {
+        codebase: codebase,
+        compliance_standards: ["GDPR", "OWASP", "SOC2"],
+        scan_depth: "comprehensive",
+        include_penetration_tests: true
+      });
+
+      console.log("🚀 Security Specialist execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -278,6 +315,18 @@ def get_users():
     eta_seconds: null,
   };
 
+  // Get Security Specialist agent specifically
+  const securityAgent = agents["security_specialist"] || {
+    agent_name: "security_specialist",
+    agent_display_name: "Security Specialist",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       {/* Header */}
@@ -320,7 +369,7 @@ def get_users():
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={5}
+          totalAgents={6}
         />
       </div>
 
@@ -476,8 +525,36 @@ def get_users():
             />
           </div>
 
+          {/* Security Specialist Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">🔒</span>
+              Agent 06: Security Specialist
+            </h2>
+            {securityAgent.status === "idle" && (
+              <button
+                onClick={handleStartSecurityAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Security Audit & Compliance Check"}
+              </button>
+            )}
+            <AgentCard
+              agentName={securityAgent.agent_name}
+              agentDisplayName={securityAgent.agent_display_name}
+              status={securityAgent.status}
+              currentTask={securityAgent.current_task}
+              progress={securityAgent.progress}
+              tokensUsed={securityAgent.tokens_used}
+              costUsd={securityAgent.cost_usd}
+              etaSeconds={securityAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && securityAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -504,6 +581,10 @@ def get_users():
                   <p className="font-semibold text-amber-400">Agent 05: QA Engineer</p>
                   <p>Senior QA engineer that generates comprehensive test suite (unit, integration, E2E, performance) and identifies bugs with severity levels and reproduction steps</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-red-400">Agent 06: Security Specialist</p>
+                  <p>Senior security engineer that performs OWASP Top 10 vulnerability scan, compliance checking (GDPR, SOC2, HIPAA), and generates security audit with fix recommendations</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
                   <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
@@ -512,6 +593,7 @@ def get_users():
                     <li>Start Polyglot Agent → Get Production Code</li>
                     <li>Start Designer Agent → Get Polished UI</li>
                     <li>Start QA Agent → Get Tests & Bug Reports</li>
+                    <li>Start Security Agent → Get Security Audit</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>

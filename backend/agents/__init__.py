@@ -8,6 +8,7 @@ from backend.agents.polyglot_agent import PolyglotAgent
 from backend.agents.system_architect_agent import SystemArchitectAgent
 from backend.agents.ui_ux_designer_agent import UIUXDesignerAgent
 from backend.agents.qa_engineer_agent import QAEngineerAgent
+from backend.agents.security_specialist_agent import SecuritySpecialistAgent
 
 __all__ = [
     "BaseAgent",
@@ -16,4 +17,5 @@ __all__ = [
     "SystemArchitectAgent",
     "UIUXDesignerAgent",
     "QAEngineerAgent",
+    "SecuritySpecialistAgent",
 ]

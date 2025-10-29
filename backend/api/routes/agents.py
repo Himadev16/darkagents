@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent, SecuritySpecialistAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -62,6 +62,8 @@ def execute_agent_async(
             agent = UIUXDesignerAgent()
         elif agent_name == "qa_engineer":
             agent = QAEngineerAgent()
+        elif agent_name == "security_specialist":
+            agent = SecuritySpecialistAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -144,9 +146,10 @@ async def execute_agent(
         "polyglot_agent",
         "ui_ux_designer",
         "qa_engineer",
+        "security_specialist",
         # Add more as we implement them
-        # "security_specialist",
         # "devops_engineer",
+        # "growth_marketer",
         # etc.
     ]
 
@@ -303,6 +306,46 @@ async def list_available_agents():
             ],
             "input": "Complete codebase from Polyglot + Designer agents",
             "output": "Test suite + bug reports + quality score"
+        },
+        {
+            "name": "security_specialist",
+            "display_name": "Security Specialist",
+            "role": "Senior security engineer - Performs security audit and compliance checking",
+            "status": "available",
+            "deliverables": [
+                "OWASP Top 10 Vulnerability Scan",
+                "Security Vulnerability Reports (severity levels, fixes)",
+                "Compliance Checklist (GDPR, SOC2, HIPAA, PCI-DSS)",
+                "Security Score (0-100)",
+                "Penetration Testing Recommendations",
+                "Remediation Roadmap (prioritized fixes)"
+            ],
+            "vulnerability_types": [
+                "SQL Injection, XSS, CSRF",
+                "Authentication bypass, broken access control",
+                "Cryptographic failures, weak algorithms",
+                "Security misconfiguration",
+                "Sensitive data exposure",
+                "API security issues"
+            ],
+            "compliance_standards": [
+                "GDPR (General Data Protection Regulation)",
+                "SOC2 (Security, Availability, Confidentiality)",
+                "HIPAA (Healthcare data protection)",
+                "PCI-DSS (Payment card data security)"
+            ],
+            "features": [
+                "OWASP Top 10 detection",
+                "CWE vulnerability classification",
+                "Proof of concept exploits",
+                "Fix recommendations with code examples",
+                "Security scoring algorithm",
+                "Compliance gap analysis",
+                "Retry logic with exponential backoff",
+                "Production-grade error handling"
+            ],
+            "input": "Complete codebase from Polyglot + Designer + QA agents",
+            "output": "Security audit report + vulnerabilities + compliance status"
         },
         # Add more agents as we implement them
     ]
