@@ -1,151 +1,297 @@
 """
-Agent 02: System Architect Agent
-=================================
-
-The System Architect Agent is a senior technical architect that designs
-complete system architectures for SaaS applications.
-
-Input: PRD from Product Manager Agent
-Output: Complete technical architecture document including:
-  - Database schema (SQLAlchemy models)
-  - API specifications (REST endpoints)
-  - Tech stack recommendations
-  - Infrastructure plan
-  - Cost estimates
-  - Security architecture
-  - Scalability plan
-
-Tech Stack (Standard):
-  - Backend: FastAPI + SQLAlchemy + PostgreSQL
-  - Frontend: Next.js 14 + TypeScript + Tailwind CSS
-  - Deployment: Vercel (frontend) + Railway (backend)
-  - Auth: JWT with refresh tokens
-  - Cache: Redis (optional)
-  - File Storage: AWS S3 or Cloudflare R2
+Agent 02: System Architect
+Designs complete system architectures for SaaS applications
+PRODUCTION-READY with retry logic, rollback, and validation
 """
-
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
-from sqlalchemy.orm import Session
+import time
+from typing import Dict, Any
 import structlog
+from sqlalchemy.orm import Session
 
-from backend.services.claude_service import claude_service
-from backend.models import Project, AgentExecution
+from backend.database.models import AgentExecution, Project
+from backend.agents.base_agent import BaseAgent
+from backend.lib.openrouter import openrouter_client
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger()
 
 
-class SystemArchitectAgent:
+class SystemArchitectAgent(BaseAgent):
     """
-    Agent 02: System Architect
+    System Architect Agent
 
     Senior technical architect with 15+ years enterprise experience.
-    Designs production-ready, scalable, secure system architectures.
+
+    Capabilities:
+    - Complete database schema (SQLAlchemy models)
+    - API specifications (REST endpoints with Pydantic schemas)
+    - Tech stack recommendations (FastAPI, Next.js, PostgreSQL)
+    - Infrastructure plan (deployment, CI/CD, monitoring)
+    - Security architecture (auth, encryption, OWASP Top 10)
+    - Scalability plan (caching, load balancing, optimization)
+    - Cost estimates (1K to 1M+ users)
+
+    Production Features:
+    - Retry logic with exponential backoff (3 retries)
+    - Input validation with detailed error messages
+    - Database transaction management with rollback
+    - Graceful error handling
+    - Detailed structured logging
     """
 
     def __init__(self):
+        """Initialize System Architect Agent"""
         self.agent_name = "system_architect"
-        self.agent_display_name = "System Architect Agent"
-        self.agent_description = "Senior technical architect - Designs complete system architecture"
-        self.model = "anthropic/claude-sonnet-4.5"
-        self.temperature = 0.4  # Balanced - creative architecture but structured output
-        self.max_tokens = 12000  # Large output for comprehensive architecture docs
+        self.agent_display_name = "System Architect"
+        self.max_retries = 3
+        self.retry_delay = 2  # Base delay in seconds for exponential backoff
 
     def execute(self, project_id: int, input_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
         """
-        Execute the System Architect Agent
+        Execute System Architect Agent
 
         Args:
-            project_id: ID of the project
-            input_data: Must contain 'prd' (from PM Agent) or 'requirements'
+            project_id: Project ID
+            input_data: {
+                "prd": str (PRD from Product Manager, optional),
+                "requirements": str (alternative to prd),
+                "target_users": str (optional, e.g., "General users"),
+                "expected_scale": str (optional, e.g., "1K-10K users", "100K+ users")
+            }
             db: Database session
 
         Returns:
-            Architecture document with database schema, API specs, infrastructure plan
+            {
+                "success": bool,
+                "architecture": str (comprehensive architecture document),
+                "database_schema": str (SQLAlchemy models),
+                "api_specifications": str (REST endpoint specs),
+                "tech_stack": str (technology recommendations),
+                "infrastructure_plan": str (deployment architecture),
+                "security_architecture": str (auth, encryption, OWASP mitigations),
+                "scalability_plan": str (scaling strategy),
+                "cost_estimates": str (monthly costs per tier),
+                "execution_id": int,
+                "tokens_used": int,
+                "cost_usd": float,
+                "error": str (if success=False)
+            }
         """
+        execution = None
         try:
             logger.info(
-                "system_architect_agent.execute.start",
+                "system_architect_agent_started",
                 project_id=project_id,
-                input_data=input_data
+                agent_name=self.agent_name
             )
 
-            # Create agent execution record
-            execution = AgentExecution(
-                project_id=project_id,
-                agent_name=self.agent_name,
-                agent_display_name=self.agent_display_name,
-                status="running",
-                started_at=datetime.utcnow()
-            )
-            db.add(execution)
-            db.commit()
-            db.refresh(execution)
+            # Input validation
+            if not input_data:
+                input_data = {}
 
-            # Get PRD from input (either from PM Agent or direct requirements)
             prd = input_data.get("prd") or input_data.get("requirements", "")
-            if not prd:
-                raise ValueError("Missing 'prd' or 'requirements' in input_data")
+            if not prd or not isinstance(prd, str):
+                raise ValueError("Missing or invalid 'prd' or 'requirements' (must be non-empty string)")
 
-            # Optional: Get target users and business model for architecture decisions
+            if len(prd.strip()) < 20:
+                raise ValueError("prd/requirements too short (minimum 20 characters)")
+
+            # Optional fields with safe defaults
             target_users = input_data.get("target_users", "General users")
             expected_scale = input_data.get("expected_scale", "1K-10K users")
 
-            # Generate architecture
-            logger.info("system_architect_agent.generating_architecture")
-            architecture = self._generate_architecture(
+            # Create database record
+            try:
+                execution = AgentExecution(
+                    project_id=project_id,
+                    agent_name=self.agent_name,
+                    agent_display_name=self.agent_display_name,
+                    status="working",
+                    progress=0,
+                    current_task="Analyzing product requirements",
+                    tokens_used=0,
+                    cost_usd=0.0
+                )
+                db.add(execution)
+                db.commit()
+                db.refresh(execution)
+
+                logger.info(
+                    "system_architect_execution_created",
+                    execution_id=execution.id,
+                    project_id=project_id
+                )
+            except Exception as db_error:
+                logger.error("database_error_creating_execution", error=str(db_error))
+                db.rollback()
+                raise
+
+            # Update progress
+            execution.current_task = "Designing system architecture"
+            execution.progress = 10
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+            # Generate architecture with retry logic
+            result = self._generate_architecture_with_retry(
                 prd=prd,
                 target_users=target_users,
                 expected_scale=expected_scale,
+                project_id=project_id,
                 execution=execution,
                 db=db
             )
 
-            # Update execution record
-            execution.status = "completed"
-            execution.completed_at = datetime.utcnow()
-            execution.output = architecture["content"]
-            execution.tokens_used = architecture["tokens_used"]
-            execution.cost_usd = architecture["cost_usd"]
-            db.commit()
+            # Update execution record with results
+            try:
+                execution.status = "completed"
+                execution.progress = 100
+                execution.current_task = "Architecture design complete"
+                execution.tokens_used = result.get("tokens_used", 0)
+                execution.cost_usd = result.get("cost_usd", 0.0)
+                db.commit()
 
-            logger.info(
-                "system_architect_agent.execute.complete",
-                execution_id=execution.id,
-                tokens_used=architecture["tokens_used"],
-                cost_usd=architecture["cost_usd"]
-            )
+                logger.info(
+                    "system_architect_agent_completed",
+                    execution_id=execution.id,
+                    project_id=project_id,
+                    tokens_used=result.get("tokens_used", 0),
+                    cost_usd=result.get("cost_usd", 0.0)
+                )
+            except Exception as db_error:
+                logger.warning("database_error_updating_completion", error=str(db_error))
+                db.rollback()
 
             return {
                 "success": True,
                 "execution_id": execution.id,
-                "agent_name": self.agent_name,
-                "architecture": architecture["content"],
-                "tokens_used": architecture["tokens_used"],
-                "cost_usd": architecture["cost_usd"],
-                "structured_output": architecture.get("structured_output", {}),
+                **result
+            }
+
+        except ValueError as ve:
+            # Validation errors - don't retry, return immediately
+            logger.error(
+                "system_architect_validation_error",
+                project_id=project_id,
+                error=str(ve),
+                error_type="validation_error"
+            )
+
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Validation error: {str(ve)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            return {
+                "success": False,
+                "error": str(ve),
+                "error_type": "validation_error",
+                "execution_id": execution.id if execution else None
             }
 
         except Exception as e:
+            # Unexpected errors
             logger.error(
-                "system_architect_agent.execute.error",
+                "system_architect_agent_failed",
+                project_id=project_id,
                 error=str(e),
-                project_id=project_id
+                error_type=type(e).__name__
             )
 
-            # Update execution record with error
-            if 'execution' in locals():
-                execution.status = "failed"
-                execution.error_message = str(e)
-                execution.completed_at = datetime.utcnow()
-                db.commit()
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Error: {str(e)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
 
             return {
                 "success": False,
                 "error": str(e),
-                "agent_name": self.agent_name
+                "error_type": type(e).__name__,
+                "execution_id": execution.id if execution else None
             }
+
+    def _generate_architecture_with_retry(
+        self,
+        prd: str,
+        target_users: str,
+        expected_scale: str,
+        project_id: int,
+        execution: AgentExecution,
+        db: Session
+    ) -> Dict[str, Any]:
+        """
+        Generate architecture with retry logic (exponential backoff)
+
+        Retries up to max_retries times with exponential backoff on transient errors
+        """
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.info(
+                    "architecture_generation_attempt",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    project_id=project_id
+                )
+
+                result = self._generate_architecture(
+                    prd=prd,
+                    target_users=target_users,
+                    expected_scale=expected_scale,
+                    execution=execution,
+                    db=db
+                )
+
+                logger.info(
+                    "architecture_generation_success",
+                    attempt=attempt,
+                    project_id=project_id
+                )
+
+                return result
+
+            except ValueError as ve:
+                # Don't retry validation errors
+                logger.error("architecture_generation_validation_error", error=str(ve))
+                raise
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "architecture_generation_attempt_failed",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    error=str(e),
+                    error_type=type(e).__name__
+                )
+
+                if attempt == self.max_retries:
+                    logger.error(
+                        "architecture_generation_all_retries_failed",
+                        project_id=project_id,
+                        error=str(e)
+                    )
+                    raise
+
+                # Exponential backoff: 2s, 4s, 8s
+                wait_time = self.retry_delay * (2 ** (attempt - 1))
+                logger.info(
+                    "architecture_generation_retrying",
+                    wait_time=wait_time,
+                    next_attempt=attempt + 1
+                )
+                time.sleep(wait_time)
+
+        # Should never reach here, but just in case
+        raise last_error if last_error else Exception("Unknown error in retry logic")
 
     def _generate_architecture(
         self,
@@ -156,335 +302,279 @@ class SystemArchitectAgent:
         db: Session
     ) -> Dict[str, Any]:
         """
-        Generate complete system architecture using Claude
+        Generate comprehensive system architecture using Claude Sonnet 4.5
 
-        Returns:
-            {
-                "content": "Full architecture document markdown",
-                "tokens_used": 12500,
-                "cost_usd": 0.085,
-                "structured_output": {
-                    "database_schema": {...},
-                    "api_endpoints": [...],
-                    "tech_stack": {...},
-                    "infrastructure": {...}
-                }
-            }
+        This is the core method that calls OpenRouter API
         """
+        logger.info("generating_architecture", expected_scale=expected_scale)
 
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(prd, target_users, expected_scale)
 
-        # Call Claude API
-        response = claude_service.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        user_prompt = f"""# System Architecture Mission
 
-        # Extract structured data from response (if possible)
-        structured_output = self._extract_structured_data(response["content"])
+Design a complete, production-ready system architecture for this SaaS product.
+
+## Product Requirements (PRD)
+
+{prd[:2000]}...
+
+## Target Users
+
+{target_users}
+
+## Expected Scale
+
+{expected_scale}
+
+## Your Deliverables
+
+Generate ALL of the following sections:
+
+1. **Executive Summary** - High-level architecture overview, key decisions, estimated costs
+
+2. **Database Schema** - Complete SQLAlchemy models with relationships, indexes, and migration strategy
+
+3. **API Specifications** - REST endpoint definitions with request/response schemas, auth flow, rate limiting
+
+4. **Tech Stack** - Backend (FastAPI, PostgreSQL), Frontend (Next.js, TypeScript), deployment platforms
+
+5. **Infrastructure Plan** - Deployment architecture, environments (dev/staging/prod), CI/CD pipeline, monitoring
+
+6. **Security Architecture** - Auth/authorization, encryption, API security, secret management, OWASP Top 10 mitigations
+
+7. **Scalability Plan** - Horizontal scaling, database optimization, caching strategy, load balancing, cost projections
+
+8. **Cost Estimates** - Infrastructure costs for 1K, 10K, 100K, 1M users
+
+## Output Format
+
+Return as JSON with these keys:
+- executive_summary
+- database_schema
+- api_specifications
+- tech_stack
+- infrastructure_plan
+- security_architecture
+- scalability_plan
+- cost_estimates
+- architecture (full comprehensive document)
+
+Be specific, production-ready, and include actual code for schemas.
+"""
+
+        # Update progress
+        execution.current_task = "Calling Claude Sonnet 4.5 for architecture design"
+        execution.progress = 30
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Call OpenRouter API
+        try:
+            response = openrouter_client.chat.completions.create(
+                model="anthropic/claude-sonnet-4-20250514",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.4,  # Balanced - creative architecture but structured
+                max_tokens=12000
+            )
+
+            # Extract response
+            content = response.choices[0].message.content
+
+            # Extract token usage
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+
+            # Calculate cost (Claude Sonnet 4: $3/1M input, $15/1M output)
+            input_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') else 0
+            output_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
+            cost_usd = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+
+            logger.info(
+                "openrouter_api_success",
+                tokens_used=tokens_used,
+                cost_usd=cost_usd
+            )
+
+        except Exception as api_error:
+            logger.error("openrouter_api_error", error=str(api_error))
+            raise
+
+        # Update progress
+        execution.current_task = "Parsing architecture deliverables"
+        execution.progress = 80
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Parse response
+        result = self._parse_architecture_response(content)
 
         return {
-            "content": response["content"],
-            "tokens_used": response["tokens_used"],
-            "cost_usd": response["cost_usd"],
-            "structured_output": structured_output
+            **result,
+            "tokens_used": tokens_used,
+            "cost_usd": round(cost_usd, 4)
         }
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt for the Architect Agent"""
+        """Build comprehensive system prompt for System Architect agent"""
+        return """You are a **Senior System Architect** with 15+ years of enterprise experience.
 
-        return """You are the SYSTEM ARCHITECT AGENT - a senior technical architect with 15+ years of enterprise experience in the DARKAGENTS platform.
+# Your Expertise
 
-🎯 YOUR ROLE:
-You design complete, production-ready system architectures for SaaS applications. Your architectures are:
-- Scalable (handle 1K to 1M+ users)
-- Secure (OWASP Top 10 compliant)
-- Cost-effective (optimized infrastructure costs)
-- Maintainable (clean separation of concerns)
-- Modern (latest best practices)
+You design complete, production-ready system architectures for SaaS applications that are:
+- **Scalable** (handle 1K to 1M+ users)
+- **Secure** (OWASP Top 10 compliant)
+- **Cost-effective** (optimized infrastructure)
+- **Maintainable** (clean separation of concerns)
+- **Modern** (latest best practices)
 
-📋 YOUR DELIVERABLES:
-You must produce a comprehensive architecture document that includes:
+## Tech Stack Standards
 
-1. **Executive Summary**
-   - High-level architecture overview
-   - Key technical decisions and rationale
-   - Estimated infrastructure costs
+**Backend:**
+- FastAPI (Python 3.11+)
+- SQLAlchemy 2.0 with async support
+- PostgreSQL (primary database)
+- Redis (caching, sessions)
+- JWT authentication with refresh tokens
 
-2. **Database Schema**
-   - Complete SQLAlchemy models (Python code)
-   - Table relationships with foreign keys
-   - Indexes for performance
-   - Migration strategy
+**Frontend:**
+- Next.js 14+ with App Router
+- TypeScript (strict mode)
+- Tailwind CSS for styling
+- React Query for state management
 
-3. **API Specifications**
-   - REST endpoint definitions
-   - Request/response schemas (Pydantic models)
-   - Authentication/authorization flow
-   - Rate limiting strategy
+**Deployment:**
+- Vercel (frontend hosting)
+- Railway or AWS (backend hosting)
+- GitHub Actions (CI/CD)
+- PostgreSQL managed service
 
-4. **Tech Stack**
-   - Backend: FastAPI + SQLAlchemy + PostgreSQL
-   - Frontend: Next.js 14 + TypeScript + Tailwind CSS
-   - Auth: JWT with refresh tokens
-   - Cache: Redis (if needed for scale)
-   - File Storage: AWS S3 or Cloudflare R2
-   - Deployment: Vercel (frontend) + Railway (backend)
+## Output Requirements
 
-5. **Infrastructure Plan**
-   - Deployment architecture diagram (ASCII/markdown)
-   - Environment setup (dev, staging, prod)
-   - CI/CD pipeline (GitHub Actions)
-   - Monitoring & logging strategy
+**IMPORTANT:** Return as JSON with these exact keys:
 
-6. **Security Architecture**
-   - Authentication & authorization
-   - Data encryption (at rest & in transit)
-   - API security (rate limiting, CORS, CSP)
-   - Secret management (environment variables)
-   - OWASP Top 10 mitigations
-
-7. **Scalability Plan**
-   - Horizontal scaling strategy
-   - Database optimization (indexes, query optimization)
-   - Caching strategy (Redis, CDN)
-   - Load balancing
-   - Cost projections (1K, 10K, 100K, 1M users)
-
-8. **Cost Estimates**
-   - Infrastructure costs per tier
-   - API/service costs (if applicable)
-   - Total monthly operating costs
-
-🔥 CRITICAL FORMATTING RULES:
-
-1. **Database Schema** - Provide complete SQLAlchemy models:
-```python
-# models/user.py
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey
-from sqlalchemy.orm import relationship
-from datetime import datetime
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    subscriptions = relationship("Subscription", back_populates="user")
-```
-
-2. **API Specifications** - Provide complete endpoint definitions:
-```markdown
-### POST /api/auth/register
-**Description:** Register new user
-**Request Body:**
+```json
 {
-  "email": "user@example.com",
-  "password": "secure_password"
+  "executive_summary": "High-level overview, key decisions, cost estimates",
+  "database_schema": "Complete SQLAlchemy models with Python code",
+  "api_specifications": "REST endpoints with request/response schemas",
+  "tech_stack": "Technology choices with justifications",
+  "infrastructure_plan": "Deployment architecture, CI/CD, monitoring",
+  "security_architecture": "Auth, encryption, OWASP Top 10 mitigations",
+  "scalability_plan": "Scaling strategy, optimization, cost projections",
+  "cost_estimates": "Monthly costs for 1K, 10K, 100K, 1M users",
+  "architecture": "Complete comprehensive architecture document"
 }
-**Response (201):**
-{
-  "id": 1,
-  "email": "user@example.com",
-  "access_token": "eyJ...",
-  "refresh_token": "eyJ..."
-}
-**Errors:**
-- 400: Invalid email format
-- 409: Email already registered
 ```
 
-3. **Architecture Diagrams** - Use ASCII/markdown:
-```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│   Next.js   │─────▶│   FastAPI    │─────▶│ PostgreSQL  │
-│  (Vercel)   │      │  (Railway)   │      │  (Railway)  │
-└─────────────┘      └──────────────┘      └─────────────┘
-                            │
-                            ▼
-                     ┌─────────────┐
-                     │    Redis    │
-                     │   (Cache)   │
-                     └─────────────┘
-```
+## Database Schema Requirements
 
-4. **Cost Estimates** - Provide detailed breakdown:
-```markdown
-### Monthly Infrastructure Costs
+Provide complete SQLAlchemy models:
+- Table definitions with proper types
+- Foreign key relationships
+- Indexes for performance
+- Unique constraints
+- Default values
+- Timestamps (created_at, updated_at)
 
-**1K Users:**
-- Railway (backend + database): $20/month
-- Vercel (frontend): $0/month (free tier)
-- Total: $20/month
+## API Specifications Requirements
 
-**10K Users:**
-- Railway (backend + database): $50/month
-- Vercel (frontend): $0/month (hobby tier)
-- Redis (Upstash): $10/month
-- Total: $60/month
+For each endpoint provide:
+- HTTP method and path
+- Description
+- Request body schema (Pydantic)
+- Response schema (Pydantic)
+- Authentication requirements
+- Error responses
 
-**100K Users:**
-- Railway (backend + database): $200/month
-- Vercel (frontend): $20/month (pro tier)
-- Redis (Upstash): $30/month
-- AWS S3 (file storage): $20/month
-- Total: $270/month
-```
+## Security Requirements
 
-💡 BEST PRACTICES:
+- JWT authentication with refresh tokens
+- Password hashing (bcrypt or argon2)
+- HTTPS only (TLS 1.3)
+- API rate limiting
+- CORS configuration
+- XSS protection
+- SQL injection prevention (parameterized queries)
+- Secret management (environment variables)
 
-1. **Always use PostgreSQL** for relational data (users, subscriptions, etc.)
-2. **Always use JWT** for authentication (access + refresh tokens)
-3. **Always add indexes** on foreign keys and frequently queried fields
-4. **Always plan for caching** (Redis) if > 10K users expected
-5. **Always use environment variables** for secrets (never hardcode)
-6. **Always plan CORS** properly for Next.js ↔ FastAPI communication
-7. **Always include rate limiting** to prevent API abuse
-8. **Always design for horizontal scaling** (stateless backend)
+## Scalability Requirements
 
-🎯 OUTPUT FORMAT:
+- Horizontal scaling with load balancer
+- Database connection pooling
+- Redis caching strategy
+- CDN for static assets
+- Database query optimization
+- Async operations where applicable
 
-Your response must be a comprehensive markdown document with all 8 sections above.
-Use proper headings, code blocks, and formatting.
-Be specific and detailed - this will be handed to the Polyglot Agent to implement.
-
-Remember: Your architecture will directly inform the code generation. Be precise, complete, and production-ready.
+Be specific and production-ready!
 """
 
-    def _build_user_prompt(self, prd: str, target_users: str, expected_scale: str) -> str:
-        """Build the user prompt with PRD and requirements"""
-
-        return f"""Design a complete system architecture for the following SaaS application.
-
-📄 PRODUCT REQUIREMENTS DOCUMENT:
-{prd}
-
-👥 TARGET USERS:
-{target_users}
-
-📈 EXPECTED SCALE:
-{expected_scale}
-
-🎯 YOUR TASK:
-
-Design a complete, production-ready system architecture that includes:
-
-1. Executive Summary
-2. Database Schema (SQLAlchemy models)
-3. API Specifications (REST endpoints with request/response schemas)
-4. Tech Stack (FastAPI + Next.js + PostgreSQL + Railway + Vercel)
-5. Infrastructure Plan (deployment architecture + CI/CD)
-6. Security Architecture (auth + encryption + OWASP mitigations)
-7. Scalability Plan (caching + load balancing + cost projections)
-8. Cost Estimates (1K, 10K, 100K, 1M users)
-
-Make sure your architecture is:
-- ✅ Scalable (handles expected growth)
-- ✅ Secure (OWASP Top 10 compliant)
-- ✅ Cost-effective (optimized for budget)
-- ✅ Maintainable (clean architecture)
-- ✅ Production-ready (no shortcuts or placeholders)
-
-Provide complete code for database models and detailed API specifications.
-
-Begin your architecture document now:
-"""
-
-    def _extract_structured_data(self, architecture_doc: str) -> Dict[str, Any]:
+    def _parse_architecture_response(self, content: str) -> Dict[str, Any]:
         """
-        Extract structured data from architecture document
+        Parse Claude's response into structured architecture
 
-        This attempts to parse out:
-        - Database tables list
-        - API endpoints list
-        - Tech stack components
-        - Cost estimates
-
-        Returns empty dict if parsing fails.
+        Tries JSON parsing first, falls back to text extraction
         """
-
-        structured = {
-            "database_tables": [],
-            "api_endpoints": [],
-            "tech_stack": {},
-            "cost_estimates": {}
-        }
+        import json
+        import re
 
         try:
-            # Extract database table names (look for class definitions)
-            import re
-            table_pattern = r'class\s+(\w+)\(Base\):'
-            tables = re.findall(table_pattern, architecture_doc)
-            structured["database_tables"] = tables
+            # Try parsing as JSON
+            if "```json" in content:
+                json_match = re.search(r'```json\s*(\{.*?\})\s*```', content, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group(1))
+                    logger.info("parsed_json_from_code_block")
+                    return parsed
 
-            # Extract API endpoints (look for HTTP method + path)
-            endpoint_pattern = r'###?\s+(GET|POST|PUT|DELETE|PATCH)\s+(/[\w\-/{}]+)'
-            endpoints = re.findall(endpoint_pattern, architecture_doc)
-            structured["api_endpoints"] = [{"method": m, "path": p} for m, p in endpoints]
+            # Try parsing entire content as JSON
+            if content.strip().startswith('{'):
+                parsed = json.loads(content)
+                logger.info("parsed_json_directly")
+                return parsed
 
-            # Extract cost estimates (look for dollar amounts)
-            cost_pattern = r'\$(\d+(?:,\d+)?)/month'
-            costs = re.findall(cost_pattern, architecture_doc)
-            if costs:
-                structured["cost_estimates"]["extracted_values"] = costs
+        except json.JSONDecodeError as e:
+            logger.warning("json_parse_failed", error=str(e), fallback="text_extraction")
 
-            logger.info(
-                "system_architect_agent.extracted_structured_data",
-                tables_count=len(structured["database_tables"]),
-                endpoints_count=len(structured["api_endpoints"])
-            )
+        # Fallback: Extract sections from markdown/text
+        logger.info("using_text_extraction_fallback")
 
-        except Exception as e:
-            logger.warning(
-                "system_architect_agent.extract_structured_data.error",
-                error=str(e)
-            )
-            # Return empty structured data on error
-            pass
-
-        return structured
-
-    def validate_architecture(self, architecture_doc: str) -> Dict[str, Any]:
-        """
-        Validate that architecture document contains required sections
-
-        Returns:
-            {
-                "valid": True/False,
-                "missing_sections": [...],
-                "completeness_score": 0.0-1.0
-            }
-        """
-
-        required_sections = [
-            "Executive Summary",
-            "Database Schema",
-            "API Specifications",
-            "Tech Stack",
-            "Infrastructure Plan",
-            "Security Architecture",
-            "Scalability Plan",
-            "Cost Estimates"
-        ]
-
-        missing_sections = []
-        for section in required_sections:
-            # Case-insensitive check
-            if section.lower() not in architecture_doc.lower():
-                missing_sections.append(section)
-
-        completeness_score = (len(required_sections) - len(missing_sections)) / len(required_sections)
-
-        return {
-            "valid": len(missing_sections) == 0,
-            "missing_sections": missing_sections,
-            "completeness_score": completeness_score
+        result = {
+            "executive_summary": self._extract_section(content, ["executive_summary", "executive summary", "overview"]),
+            "database_schema": self._extract_section(content, ["database_schema", "database schema", "schema"]),
+            "api_specifications": self._extract_section(content, ["api_specifications", "api specs", "endpoints"]),
+            "tech_stack": self._extract_section(content, ["tech_stack", "technology stack", "technologies"]),
+            "infrastructure_plan": self._extract_section(content, ["infrastructure_plan", "infrastructure", "deployment"]),
+            "security_architecture": self._extract_section(content, ["security_architecture", "security", "auth"]),
+            "scalability_plan": self._extract_section(content, ["scalability_plan", "scalability", "scaling"]),
+            "cost_estimates": self._extract_section(content, ["cost_estimates", "costs", "pricing"]),
+            "architecture": content  # Full document
         }
+
+        return result
+
+    def _extract_section(self, content: str, section_keywords: list) -> str:
+        """Extract a section from markdown content based on keywords"""
+        import re
+
+        for keyword in section_keywords:
+            # Try finding markdown heading
+            pattern = rf'#{{1,3}}\s*{re.escape(keyword)}.*?\n(.*?)(?=\n#{{1,3}}\s|\Z)'
+            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+            if match:
+                return match.group(1).strip()
+
+            # Try finding JSON key
+            pattern = rf'"{re.escape(keyword)}"\s*:\s*"(.*?)"'
+            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+            if match:
+                return match.group(1).strip()
+
+        # Fallback
+        return f"Section not found. See full architecture document."
