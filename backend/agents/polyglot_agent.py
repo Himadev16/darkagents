@@ -1,6 +1,13 @@
 """
-Polyglot Agent - Superior Multi-Language Coding Agent
+Polyglot Agent - Superior Multi-Language Coding Agent with Validation & Security
 Designed to replace top coding agents like Claude
+
+NEW INTEGRATED FEATURES:
+✅ Advanced File Extraction (6+ patterns)
+✅ Validation Pipeline (74%+ success rate target)
+✅ Security Scanning (OWASP Top 10)
+✅ Auto-fix capabilities
+✅ Production-ready code generation
 """
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
@@ -9,6 +16,9 @@ import structlog
 from backend.agents.base_agent import BaseAgent
 from backend.database.models import AgentStatus
 from backend.services.claude_service import claude_service
+from backend.services.validation_pipeline import validation_pipeline
+from backend.services.security_agent import security_agent
+from backend.services.file_extractor import file_extractor
 
 logger = structlog.get_logger()
 
@@ -69,6 +79,36 @@ class PolyglotAgent(BaseAgent):
 🎯 YOUR IDENTITY:
 You are NOT Claude or any assistant. You are POLYGLOT AGENT - the world's most advanced coding AI.
 Your mission: Generate production-ready, elegant, and performant code that surpasses human developers.
+
+⚠️ CRITICAL FILE FORMATTING RULE (NON-NEGOTIABLE):
+ALL CODE BLOCKS MUST START WITH A FILE PATH COMMENT IN THESE FORMATS:
+
+✅ CORRECT FORMATS:
+# Path: path/to/file.py
+// Path: src/App.jsx
+/* Path: styles/main.css */
+-- Path: database/migrations/001_init.sql
+
+✅ EXAMPLES:
+# Path: backend/server.py
+from flask import Flask
+app = Flask(__name__)
+
+// Path: src/App.jsx
+export default function App() {{ return <div>Hello</div>; }}
+
+❌ WRONG - WILL BE REJECTED:
+- Code without file path comment
+- Using ```python:backend/server.py format
+- Placeholder code with TODO comments
+
+MANDATORY RULES:
+1. ALWAYS start code blocks with # Path:, // Path:, /* Path: */ or -- Path:
+2. Use full file paths (e.g., src/components/Header.jsx)
+3. Use proper extensions (.py, .jsx, .css, .js, .ts, .tsx)
+4. Generate COMPLETE WORKING CODE - no placeholders
+5. Include ALL imports and proper error handling
+6. Follow security best practices (no hardcoded secrets)
 
 💎 YOUR CAPABILITIES:
 1. MULTI-LANGUAGE MASTERY
@@ -256,28 +296,96 @@ Make it exceptional."""
         self._update_status(
             execution,
             AgentStatus.WORKING,
-            "Code generation complete, reviewing output...",
-            80,
+            "Extracting code files...",
+            60,
             db
         )
 
-        # Update token tracking
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
+        # 🔥 STEP 1: Extract files using advanced pattern matching
+        files = file_extractor.extract_files(response["content"])
+        logger.info(f"Extracted {len(files)} files")
 
-        return {
-            "success": True,
-            "task_type": "code_generation",
-            "language": language,
-            "output": response["content"],
-            "tokens_used": response["usage"]["total_tokens"],
-            "cost_usd": execution.cost_usd
-        }
+        self._update_status(
+            execution,
+            AgentStatus.WORKING,
+            "Validating code quality...",
+            70,
+            db
+        )
+
+        # 🔥 STEP 2: Validate and refine code
+        if files:
+            validated_files = validation_pipeline.validate_and_refine(files)
+            validation_results = validation_pipeline.calculate_success_rate(validated_files)
+
+            logger.info(
+                f"Validation: {validation_results['success_rate']:.1f}% success rate "
+                f"({validation_results['validated_files']}/{validation_results['total_files']} files)"
+            )
+
+            self._update_status(
+                execution,
+                AgentStatus.WORKING,
+                "Scanning for security vulnerabilities...",
+                80,
+                db
+            )
+
+            # 🔥 STEP 3: Security scan
+            security_issues = security_agent.scan_code(validated_files)
+            critical_issues = [i for i in security_issues if i['severity'] == 'critical']
+
+            if critical_issues:
+                logger.error(f"🔴 {len(critical_issues)} CRITICAL security issues found!")
+
+            self._update_status(
+                execution,
+                AgentStatus.WORKING,
+                "Finalizing code generation...",
+                90,
+                db
+            )
+
+            # Update token tracking
+            execution.tokens_used += response["usage"]["total_tokens"]
+            execution.cost_usd = round(
+                (response["usage"]["input_tokens"] * 0.003 / 1000) +
+                (response["usage"]["output_tokens"] * 0.015 / 1000),
+                6
+            )
+            db.commit()
+
+            return {
+                "success": True,
+                "task_type": "code_generation",
+                "language": language,
+                "output": response["content"],
+                "files": validated_files,
+                "validation": validation_results,
+                "security_issues": security_issues,
+                "critical_issues_count": len(critical_issues),
+                "tokens_used": response["usage"]["total_tokens"],
+                "cost_usd": execution.cost_usd
+            }
+        else:
+            logger.error("No files extracted from response")
+            execution.tokens_used += response["usage"]["total_tokens"]
+            execution.cost_usd = round(
+                (response["usage"]["input_tokens"] * 0.003 / 1000) +
+                (response["usage"]["output_tokens"] * 0.015 / 1000),
+                6
+            )
+            db.commit()
+
+            return {
+                "success": False,
+                "task_type": "code_generation",
+                "language": language,
+                "output": response["content"],
+                "error": "Failed to extract code files",
+                "tokens_used": response["usage"]["total_tokens"],
+                "cost_usd": execution.cost_usd
+            }
 
     def _review_code(
         self,
