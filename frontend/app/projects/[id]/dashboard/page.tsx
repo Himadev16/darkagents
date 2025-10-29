@@ -177,6 +177,42 @@ export default function Dashboard() {
     }
   };
 
+  // Start QA Engineer Agent
+  const handleStartQAAgent = async () => {
+    try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Get codebase from Polyglot/Designer agents if available
+      const polyglotAgentData = agents["polyglot_agent"];
+      const designerAgentData = agents["ui_ux_designer"];
+      const codebase = designerAgentData?.current_task || polyglotAgentData?.current_task || `
+# Sample Python FastAPI code to test
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/api/users")
+def get_users():
+    return {"users": []}
+`;
+
+      await apiClient.executeAgent(projectId, "qa_engineer", {
+        codebase: codebase,
+        test_framework: "auto-detect",
+        coverage_target: 80,
+        test_types: ["unit", "integration", "e2e", "performance"]
+      });
+
+      console.log("🚀 QA Engineer execution started");
+    } catch (err: any) {
+      console.error("Failed to start agent:", err);
+      setError(err.message || "Failed to start agent");
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
   // Calculate active agents count
   const activeAgents = Object.values(agents).filter(
     (agent) => agent.status === "working" || agent.status === "reviewing"
@@ -230,6 +266,18 @@ export default function Dashboard() {
     eta_seconds: null,
   };
 
+  // Get QA Engineer agent specifically
+  const qaAgent = agents["qa_engineer"] || {
+    agent_name: "qa_engineer",
+    agent_display_name: "QA Engineer",
+    status: "idle" as const,
+    current_task: null,
+    progress: 0,
+    tokens_used: 0,
+    cost_usd: 0,
+    eta_seconds: null,
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-6">
       {/* Header */}
@@ -272,7 +320,7 @@ export default function Dashboard() {
           totalCost={totalCost}
           overallProgress={overallProgress}
           activeAgents={activeAgents}
-          totalAgents={4}
+          totalAgents={5}
         />
       </div>
 
@@ -400,8 +448,36 @@ export default function Dashboard() {
             />
           </div>
 
+          {/* QA Engineer Agent Section */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">🧪</span>
+              Agent 05: QA Engineer
+            </h2>
+            {qaAgent.status === "idle" && (
+              <button
+                onClick={handleStartQAAgent}
+                disabled={isExecuting || connectionStatus !== "connected"}
+                className="w-full bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-700 hover:to-orange-800 disabled:from-gray-600 disabled:to-gray-700 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-3 shadow-lg hover:shadow-xl disabled:cursor-not-allowed"
+              >
+                <Play className="w-5 h-5" />
+                {isExecuting ? "Starting..." : "Generate Tests & Find Bugs"}
+              </button>
+            )}
+            <AgentCard
+              agentName={qaAgent.agent_name}
+              agentDisplayName={qaAgent.agent_display_name}
+              status={qaAgent.status}
+              currentTask={qaAgent.current_task}
+              progress={qaAgent.progress}
+              tokensUsed={qaAgent.tokens_used}
+              costUsd={qaAgent.cost_usd}
+              etaSeconds={qaAgent.eta_seconds}
+            />
+          </div>
+
           {/* Instructions */}
-          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && (
+          {pmAgent.status === "idle" && architectAgent.status === "idle" && polyglotAgent.status === "idle" && designerAgent.status === "idle" && qaAgent.status === "idle" && (
             <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/30 rounded-lg p-6">
               <h3 className="font-semibold text-white mb-3 flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-blue-400" />
@@ -424,6 +500,10 @@ export default function Dashboard() {
                   <p className="font-semibold text-pink-400">Agent 04: UI/UX Designer</p>
                   <p>Senior product designer that polishes frontend code with professional UI design, animations, accessibility (WCAG 2.1 AA), and modern design patterns using Tailwind CSS</p>
                 </div>
+                <div>
+                  <p className="font-semibold text-amber-400">Agent 05: QA Engineer</p>
+                  <p>Senior QA engineer that generates comprehensive test suite (unit, integration, E2E, performance) and identifies bugs with severity levels and reproduction steps</p>
+                </div>
                 <div className="mt-4 p-3 bg-gray-800/50 rounded">
                   <p className="font-semibold text-white mb-1">Workflow (Sequential):</p>
                   <ol className="space-y-1 ml-4 list-decimal">
@@ -431,6 +511,7 @@ export default function Dashboard() {
                     <li>Start Architect Agent → Get System Design</li>
                     <li>Start Polyglot Agent → Get Production Code</li>
                     <li>Start Designer Agent → Get Polished UI</li>
+                    <li>Start QA Agent → Get Tests & Bug Reports</li>
                     <li>Watch real-time progress in agent cards</li>
                     <li>Monitor tokens, costs, and communications</li>
                   </ol>

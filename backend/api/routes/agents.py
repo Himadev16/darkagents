@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from backend.database import get_db, Project
 from backend.database.models import User
 from backend.api.dependencies import get_current_active_user
-from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent
+from backend.agents import ProductManagerAgent, PolyglotAgent, SystemArchitectAgent, UIUXDesignerAgent, QAEngineerAgent
 import structlog
 
 logger = structlog.get_logger()
@@ -60,6 +60,8 @@ def execute_agent_async(
             agent = PolyglotAgent()
         elif agent_name == "ui_ux_designer":
             agent = UIUXDesignerAgent()
+        elif agent_name == "qa_engineer":
+            agent = QAEngineerAgent()
         # Add more agents here as we implement them
         else:
             logger.error("unknown_agent", agent_name=agent_name)
@@ -141,9 +143,10 @@ async def execute_agent(
         "system_architect",
         "polyglot_agent",
         "ui_ux_designer",
+        "qa_engineer",
         # Add more as we implement them
-        # "qa_engineer",
         # "security_specialist",
+        # "devops_engineer",
         # etc.
     ]
 
@@ -271,6 +274,35 @@ async def list_available_agents():
             ],
             "input": "Frontend code from Polyglot Agent",
             "output": "Enhanced code with professional design"
+        },
+        {
+            "name": "qa_engineer",
+            "display_name": "QA Engineer",
+            "role": "Senior QA engineer - Generates test suite and identifies bugs",
+            "status": "available",
+            "deliverables": [
+                "Comprehensive Test Suite (unit, integration, E2E, performance)",
+                "Bug Reports (severity levels, reproduction steps)",
+                "Test Coverage Report (estimated %, untested paths)",
+                "Quality Score (0-100 with breakdown)",
+                "Testing Recommendations (priority fixes, gaps)"
+            ],
+            "test_types": [
+                "Unit tests (pytest, Jest)",
+                "Integration tests (API testing)",
+                "E2E tests (Playwright, Cypress)",
+                "Performance tests (load testing, benchmarks)",
+                "Security tests (vulnerability detection)",
+                "Edge case tests (null, empty, large inputs)"
+            ],
+            "bug_severity_levels": [
+                "Critical (security, data loss, system crash)",
+                "High (major functionality broken)",
+                "Medium (minor functionality broken)",
+                "Low (cosmetic issues, typos)"
+            ],
+            "input": "Complete codebase from Polyglot + Designer agents",
+            "output": "Test suite + bug reports + quality score"
         },
         # Add more agents as we implement them
     ]

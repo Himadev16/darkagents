@@ -7,6 +7,7 @@ from backend.agents.product_manager import ProductManagerAgent
 from backend.agents.polyglot_agent import PolyglotAgent
 from backend.agents.system_architect_agent import SystemArchitectAgent
 from backend.agents.ui_ux_designer_agent import UIUXDesignerAgent
+from backend.agents.qa_engineer_agent import QAEngineerAgent
 
 __all__ = [
     "BaseAgent",
@@ -14,4 +15,5 @@ __all__ = [
     "PolyglotAgent",
     "SystemArchitectAgent",
     "UIUXDesignerAgent",
+    "QAEngineerAgent",
 ]
