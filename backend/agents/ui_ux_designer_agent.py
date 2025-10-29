@@ -1,146 +1,294 @@
 """
-Agent 04: UI/UX Designer Agent
-================================
-
-The UI/UX Designer Agent is a senior product designer that polishes and enhances
-frontend code with professional UI design, animations, and accessibility.
-
-Input: Frontend code from Polyglot Agent (React/Next.js components)
-Output: Enhanced code with improved design, including:
-  - Design system (colors, typography, spacing)
-  - Improved component design
-  - Animations and micro-interactions
-  - Responsive design enhancements
-  - Accessibility improvements (WCAG 2.1 AA compliance)
-  - Modern UI patterns and best practices
-
-Does NOT generate new code from scratch - only polishes existing code.
+Agent 04: UI/UX Designer
+Senior product designer that polishes frontend code with professional UI design
+PRODUCTION-READY with retry logic, rollback, and validation
 """
-
-import json
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from sqlalchemy.orm import Session
+import time
+from typing import Dict, Any
 import structlog
+from sqlalchemy.orm import Session
 
-from backend.services.claude_service import claude_service
-from backend.models import Project, AgentExecution
+from backend.database.models import AgentExecution, Project
+from backend.agents.base_agent import BaseAgent
+from backend.lib.openrouter import openrouter_client
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger()
 
 
-class UIUXDesignerAgent:
+class UIUXDesignerAgent(BaseAgent):
     """
-    Agent 04: UI/UX Designer
+    UI/UX Designer Agent
 
     Senior product designer with 10+ years of experience in modern web design.
-    Specializes in Tailwind CSS, React components, and accessible design.
+
+    Capabilities:
+    - Design system creation (colors, typography, spacing, shadows)
+    - Component design improvements (buttons, forms, cards, navigation)
+    - Animations and micro-interactions (hover, transitions, loading states)
+    - Responsive design enhancements (mobile-first, breakpoints)
+    - Accessibility improvements (WCAG 2.1 AA compliance, ARIA labels)
+    - Modern UI patterns (glassmorphism, gradients, shadows)
+
+    Production Features:
+    - Retry logic with exponential backoff (3 retries)
+    - Input validation with detailed error messages
+    - Database transaction management with rollback
+    - Graceful error handling
+    - Detailed structured logging
     """
 
     def __init__(self):
+        """Initialize UI/UX Designer Agent"""
         self.agent_name = "ui_ux_designer"
         self.agent_display_name = "UI/UX Designer"
-        self.agent_description = "Senior product designer - Polishes UI with professional design and animations"
-        self.model = "anthropic/claude-sonnet-4.5"
-        self.temperature = 0.5  # More creative for design work
-        self.max_tokens = 10000  # Comprehensive design improvements
+        self.max_retries = 3
+        self.retry_delay = 2  # Base delay in seconds for exponential backoff
 
     def execute(self, project_id: int, input_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
         """
-        Execute the UI/UX Designer Agent
+        Execute UI/UX Designer Agent
 
         Args:
-            project_id: ID of the project
-            input_data: Must contain 'frontend_code' (from Polyglot Agent) or 'code'
+            project_id: Project ID
+            input_data: {
+                "frontend_code": str (React/Next.js code to enhance),
+                "design_style": str (optional, e.g., "modern-minimalist", "vibrant"),
+                "color_scheme": str (optional, e.g., "professional", "playful"),
+                "target_audience": str (optional, e.g., "business professionals")
+            }
             db: Database session
 
         Returns:
-            Enhanced frontend code with design improvements
+            {
+                "success": bool,
+                "enhanced_code": str (frontend code with design improvements),
+                "design_improvements": list (summary of improvements),
+                "execution_id": int,
+                "tokens_used": int,
+                "cost_usd": float,
+                "error": str (if success=False)
+            }
         """
+        execution = None
         try:
             logger.info(
-                "ui_ux_designer_agent.execute.start",
+                "ui_ux_designer_started",
                 project_id=project_id,
-                input_data_keys=list(input_data.keys())
+                agent_name=self.agent_name
             )
 
-            # Create agent execution record
-            execution = AgentExecution(
-                project_id=project_id,
-                agent_name=self.agent_name,
-                agent_display_name=self.agent_display_name,
-                status="running",
-                started_at=datetime.utcnow()
-            )
-            db.add(execution)
-            db.commit()
-            db.refresh(execution)
+            # Input validation
+            if not input_data:
+                input_data = {}
 
-            # Get frontend code from input
             frontend_code = input_data.get("frontend_code") or input_data.get("code", "")
-            if not frontend_code:
-                raise ValueError("Missing 'frontend_code' or 'code' in input_data")
+            if not frontend_code or not isinstance(frontend_code, str):
+                raise ValueError("Missing or invalid 'frontend_code' (must be non-empty string)")
 
-            # Optional: Get design preferences
+            if len(frontend_code.strip()) < 20:
+                raise ValueError("frontend_code too short (minimum 20 characters)")
+
+            # Optional fields with safe defaults
             design_style = input_data.get("design_style", "modern-minimalist")
             color_scheme = input_data.get("color_scheme", "professional")
             target_audience = input_data.get("target_audience", "business professionals")
 
-            # Generate design improvements
-            logger.info("ui_ux_designer_agent.enhancing_design")
-            enhanced_design = self._enhance_design(
+            # Create database record
+            try:
+                execution = AgentExecution(
+                    project_id=project_id,
+                    agent_name=self.agent_name,
+                    agent_display_name=self.agent_display_name,
+                    status="working",
+                    progress=0,
+                    current_task="Analyzing frontend code",
+                    tokens_used=0,
+                    cost_usd=0.0
+                )
+                db.add(execution)
+                db.commit()
+                db.refresh(execution)
+
+                logger.info(
+                    "ui_ux_designer_execution_created",
+                    execution_id=execution.id,
+                    project_id=project_id
+                )
+            except Exception as db_error:
+                logger.error("database_error_creating_execution", error=str(db_error))
+                db.rollback()
+                raise
+
+            # Update progress
+            execution.current_task = "Enhancing UI/UX design"
+            execution.progress = 10
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+            # Enhance design with retry logic
+            result = self._enhance_design_with_retry(
                 frontend_code=frontend_code,
                 design_style=design_style,
                 color_scheme=color_scheme,
                 target_audience=target_audience,
+                project_id=project_id,
                 execution=execution,
                 db=db
             )
 
-            # Update execution record
-            execution.status = "completed"
-            execution.completed_at = datetime.utcnow()
-            execution.output = enhanced_design["content"]
-            execution.tokens_used = enhanced_design["tokens_used"]
-            execution.cost_usd = enhanced_design["cost_usd"]
-            db.commit()
+            # Update execution record with results
+            try:
+                execution.status = "completed"
+                execution.progress = 100
+                execution.current_task = "Design enhancement complete"
+                execution.tokens_used = result.get("tokens_used", 0)
+                execution.cost_usd = result.get("cost_usd", 0.0)
+                db.commit()
 
-            logger.info(
-                "ui_ux_designer_agent.execute.complete",
-                execution_id=execution.id,
-                tokens_used=enhanced_design["tokens_used"],
-                cost_usd=enhanced_design["cost_usd"]
-            )
+                logger.info(
+                    "ui_ux_designer_completed",
+                    execution_id=execution.id,
+                    project_id=project_id,
+                    tokens_used=result.get("tokens_used", 0),
+                    cost_usd=result.get("cost_usd", 0.0)
+                )
+            except Exception as db_error:
+                logger.warning("database_error_updating_completion", error=str(db_error))
+                db.rollback()
 
             return {
                 "success": True,
                 "execution_id": execution.id,
-                "agent_name": self.agent_name,
-                "enhanced_code": enhanced_design["content"],
-                "design_improvements": enhanced_design.get("improvements_summary", []),
-                "tokens_used": enhanced_design["tokens_used"],
-                "cost_usd": enhanced_design["cost_usd"],
+                **result
+            }
+
+        except ValueError as ve:
+            # Validation errors - don't retry, return immediately
+            logger.error(
+                "ui_ux_designer_validation_error",
+                project_id=project_id,
+                error=str(ve),
+                error_type="validation_error"
+            )
+
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Validation error: {str(ve)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            return {
+                "success": False,
+                "error": str(ve),
+                "error_type": "validation_error",
+                "execution_id": execution.id if execution else None
             }
 
         except Exception as e:
+            # Unexpected errors
             logger.error(
-                "ui_ux_designer_agent.execute.error",
+                "ui_ux_designer_failed",
+                project_id=project_id,
                 error=str(e),
-                project_id=project_id
+                error_type=type(e).__name__
             )
 
-            # Update execution record with error
-            if 'execution' in locals():
-                execution.status = "failed"
-                execution.error_message = str(e)
-                execution.completed_at = datetime.utcnow()
-                db.commit()
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Error: {str(e)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
 
             return {
                 "success": False,
                 "error": str(e),
-                "agent_name": self.agent_name
+                "error_type": type(e).__name__,
+                "execution_id": execution.id if execution else None
             }
+
+    def _enhance_design_with_retry(
+        self,
+        frontend_code: str,
+        design_style: str,
+        color_scheme: str,
+        target_audience: str,
+        project_id: int,
+        execution: AgentExecution,
+        db: Session
+    ) -> Dict[str, Any]:
+        """
+        Enhance design with retry logic (exponential backoff)
+
+        Retries up to max_retries times with exponential backoff on transient errors
+        """
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.info(
+                    "design_enhancement_attempt",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    project_id=project_id
+                )
+
+                result = self._enhance_design(
+                    frontend_code=frontend_code,
+                    design_style=design_style,
+                    color_scheme=color_scheme,
+                    target_audience=target_audience,
+                    execution=execution,
+                    db=db
+                )
+
+                logger.info(
+                    "design_enhancement_success",
+                    attempt=attempt,
+                    project_id=project_id
+                )
+
+                return result
+
+            except ValueError as ve:
+                # Don't retry validation errors
+                logger.error("design_enhancement_validation_error", error=str(ve))
+                raise
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "design_enhancement_attempt_failed",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    error=str(e),
+                    error_type=type(e).__name__
+                )
+
+                if attempt == self.max_retries:
+                    logger.error(
+                        "design_enhancement_all_retries_failed",
+                        project_id=project_id,
+                        error=str(e)
+                    )
+                    raise
+
+                # Exponential backoff: 2s, 4s, 8s
+                wait_time = self.retry_delay * (2 ** (attempt - 1))
+                logger.info(
+                    "design_enhancement_retrying",
+                    wait_time=wait_time,
+                    next_attempt=attempt + 1
+                )
+                time.sleep(wait_time)
+
+        # Should never reach here, but just in case
+        raise last_error if last_error else Exception("Unknown error in retry logic")
 
     def _enhance_design(
         self,
@@ -152,56 +300,81 @@ class UIUXDesignerAgent:
         db: Session
     ) -> Dict[str, Any]:
         """
-        Enhance frontend code with professional UI/UX design
+        Enhance frontend code with professional UI/UX design using Claude Sonnet 4.5
 
-        Returns:
-            {
-                "content": "Enhanced frontend code with design improvements",
-                "tokens_used": 10500,
-                "cost_usd": 0.05,
-                "improvements_summary": [
-                    "Added cohesive color palette",
-                    "Improved typography hierarchy",
-                    "Added smooth animations",
-                    "Enhanced accessibility (ARIA labels)"
-                ]
-            }
+        This is the core method that calls OpenRouter API
         """
+        logger.info("enhancing_design", design_style=design_style, color_scheme=color_scheme)
 
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(
-            frontend_code,
-            design_style,
-            color_scheme,
-            target_audience
-        )
+        user_prompt = self._build_user_prompt(frontend_code, design_style, color_scheme, target_audience)
 
-        # Call Claude API
-        response = claude_service.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        # Update progress
+        execution.current_task = "Calling Claude Sonnet 4.5 for design enhancement"
+        execution.progress = 30
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
 
-        # Extract improvements summary from response
-        improvements_summary = self._extract_improvements_summary(response["content"])
+        # Call OpenRouter API
+        try:
+            response = openrouter_client.chat.completions.create(
+                model="anthropic/claude-sonnet-4-20250514",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.5,  # More creative for design work
+                max_tokens=12000
+            )
+
+            # Extract response
+            content = response.choices[0].message.content
+
+            # Extract token usage
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+
+            # Calculate cost (Claude Sonnet 4: $3/1M input, $15/1M output)
+            input_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') else 0
+            output_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
+            cost_usd = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+
+            logger.info(
+                "openrouter_api_success",
+                tokens_used=tokens_used,
+                cost_usd=cost_usd
+            )
+
+        except Exception as api_error:
+            logger.error("openrouter_api_error", error=str(api_error))
+            raise
+
+        # Update progress
+        execution.current_task = "Extracting design improvements"
+        execution.progress = 80
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Extract improvements summary
+        design_improvements = self._extract_improvements_summary(content)
 
         return {
-            "content": response["content"],
-            "tokens_used": response["tokens_used"],
-            "cost_usd": response["cost_usd"],
-            "improvements_summary": improvements_summary
+            "enhanced_code": content,
+            "design_improvements": design_improvements,
+            "tokens_used": tokens_used,
+            "cost_usd": round(cost_usd, 4)
         }
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt for the UI/UX Designer Agent"""
+        """Build comprehensive system prompt for UI/UX Designer agent"""
+        return """You are the UI/UX DESIGNER AGENT - a senior product designer with 10+ years of experience.
 
-        return """You are the UI/UX DESIGNER AGENT - a senior product designer with 10+ years of experience in modern web design for the DARKAGENTS platform.
+# Your Identity
 
-🎯 YOUR ROLE:
-You take existing frontend code and enhance it with professional UI/UX design. You specialize in:
+You are a world-class product designer specializing in:
 - Tailwind CSS and modern CSS techniques
 - React/Next.js component design
 - Accessible design (WCAG 2.1 AA compliance)
@@ -209,104 +382,30 @@ You take existing frontend code and enhance it with professional UI/UX design. Y
 - Responsive design (mobile-first approach)
 - Modern design systems
 
-🎨 YOUR EXPERTISE:
-- Design Systems (colors, typography, spacing, shadows)
-- Visual Hierarchy (layout, contrast, whitespace)
-- User Experience (intuitive navigation, clear CTAs)
-- Accessibility (screen readers, keyboard navigation, color contrast)
-- Performance (optimized CSS, reduced reflows)
-- Modern Patterns (glassmorphism, neumorphism, gradients, animations)
+# Your Mission
 
-📋 YOUR DELIVERABLES:
-You must enhance the provided frontend code with:
+Enhance existing frontend code with professional UI/UX design that is:
+- **Beautiful** - Visually stunning and modern
+- **Accessible** - WCAG 2.1 AA compliant with ARIA labels
+- **Responsive** - Mobile-first, optimized for all screen sizes
+- **Animated** - Smooth transitions and micro-interactions
+- **Performant** - Optimized CSS, minimal reflows
 
-1. **Design System**
-   - Cohesive color palette (primary, secondary, accent, neutrals)
-   - Typography scale (font families, sizes, weights, line heights)
-   - Spacing system (consistent margins, padding, gaps)
-   - Shadow system (subtle elevation for depth)
-   - Border radius (consistent rounded corners)
+# Design System Standards
 
-2. **Component Design Improvements**
-   - Enhanced button styles (hover, active, focus, disabled states)
-   - Improved form inputs (labels, placeholders, validation states)
-   - Better card designs (shadows, borders, hover effects)
-   - Navigation improvements (clear hierarchy, active states)
-   - Modal and dialog polish (overlays, animations)
-
-3. **Animations & Micro-interactions**
-   - Smooth transitions (hover, focus, state changes)
-   - Loading states (spinners, skeletons, progress indicators)
-   - Entry animations (fade-in, slide-in, scale)
-   - Exit animations (fade-out, slide-out)
-   - Scroll animations (parallax, reveal on scroll)
-   - Interactive feedback (button clicks, form submissions)
-
-4. **Responsive Design**
-   - Mobile-first approach
-   - Breakpoint optimization (sm, md, lg, xl, 2xl)
-   - Touch-friendly targets (minimum 44x44px)
-   - Readable text sizes on mobile
-   - Optimized layouts for different screen sizes
-
-5. **Accessibility (WCAG 2.1 AA)**
-   - Semantic HTML elements
-   - ARIA labels and roles
-   - Color contrast ratios (4.5:1 for text, 3:1 for UI components)
-   - Keyboard navigation support (focus visible, tab order)
-   - Screen reader friendly (alt text, labels)
-   - Focus indicators
-   - Skip links
-
-6. **Modern UI Patterns**
-   - Glassmorphism (backdrop-blur, transparency)
-   - Gradient backgrounds
-   - Subtle shadows for depth
-   - Smooth rounded corners
-   - Elegant hover states
-   - Empty states
-   - Error states
-   - Success states
-
-🔥 CRITICAL DESIGN RULES:
-
-1. **NEVER change the functionality** - Only enhance visual design
-2. **NEVER remove existing features** - Only add design improvements
-3. **NEVER break responsive behavior** - Only enhance it
-4. **ALWAYS use Tailwind CSS classes** - No custom CSS unless absolutely necessary
-5. **ALWAYS maintain readability** - Don't sacrifice UX for aesthetics
-6. **ALWAYS ensure accessibility** - WCAG 2.1 AA compliance is mandatory
-7. **ALWAYS add smooth transitions** - duration-200, duration-300, ease-in-out
-8. **ALWAYS provide hover states** - For all interactive elements
-9. **ALWAYS use semantic colors** - blue for primary, red for danger, green for success
-10. **ALWAYS optimize for performance** - Minimize unnecessary classes
-
-💡 DESIGN BEST PRACTICES:
-
-**Color Palette Examples:**
-
-Modern Professional:
+**Color Palette:**
 - Primary: blue-600 (buttons, links, brand)
 - Secondary: gray-700 (text, headings)
 - Accent: emerald-500 (success, highlights)
 - Danger: red-500 (errors, destructive actions)
 - Background: gray-50 (light mode), gray-900 (dark mode)
 
-Modern Vibrant:
-- Primary: purple-600
-- Secondary: pink-600
-- Accent: orange-500
-- Background: Gradient from purple-50 to pink-50
-
 **Typography Scale:**
-- Headings: font-bold, tracking-tight
-- Body: font-normal, leading-relaxed
-- Captions: text-sm, text-gray-600
-- h1: text-4xl or text-5xl
-- h2: text-3xl or text-4xl
-- h3: text-2xl or text-3xl
-- body: text-base
-- small: text-sm
+- h1: text-4xl or text-5xl, font-bold, tracking-tight
+- h2: text-3xl or text-4xl, font-bold
+- h3: text-2xl or text-3xl, font-semibold
+- body: text-base, leading-relaxed
+- small: text-sm, text-gray-600
 
 **Spacing System:**
 - Section gaps: gap-8, gap-12, gap-16
@@ -318,18 +417,38 @@ Modern Vibrant:
 - Subtle: shadow-sm
 - Medium: shadow-md
 - Strong: shadow-lg, shadow-xl
-- Colored: shadow-blue-500/20
 
-**Animation Examples:**
+**Animation Standards:**
 - Hover: hover:scale-105 transition-transform duration-200
 - Focus: focus:ring-2 focus:ring-blue-500 focus:outline-none
 - Button press: active:scale-95
-- Fade in: opacity-0 animate-fadeIn
-- Slide in: translate-y-4 animate-slideUp
+- Transitions: transition-all duration-200 ease-in-out
 
-🎯 OUTPUT FORMAT:
+# Your Deliverables
 
-Return the enhanced code with clear comments showing what you improved:
+Enhance the provided frontend code with:
+
+1. **Design System** - Cohesive colors, typography, spacing, shadows
+2. **Component Polish** - Better buttons, forms, cards, navigation
+3. **Animations** - Smooth transitions, hover effects, loading states
+4. **Responsive Design** - Mobile-first, optimized breakpoints
+5. **Accessibility** - WCAG 2.1 AA compliance, ARIA labels, keyboard navigation
+6. **Modern Patterns** - Gradients, glassmorphism, subtle shadows
+
+# Critical Rules
+
+- ❌ DO NOT change functionality or remove features
+- ❌ DO NOT break existing behavior
+- ✅ DO enhance visual design with Tailwind CSS
+- ✅ DO add smooth animations and transitions
+- ✅ DO ensure accessibility (ARIA, focus states, color contrast)
+- ✅ DO optimize for mobile (responsive, touch-friendly)
+- ✅ DO use semantic HTML elements
+- ✅ DO provide hover states for all interactive elements
+
+# Output Format
+
+Return the enhanced code with a summary of improvements at the top:
 
 ```tsx
 // DESIGN IMPROVEMENTS:
@@ -338,41 +457,30 @@ Return the enhanced code with clear comments showing what you improved:
 // 3. Added smooth hover animations (scale-105, duration-200)
 // 4. Improved accessibility (ARIA labels, focus states, color contrast)
 // 5. Enhanced responsive design (mobile-first, touch-friendly)
-// 6. Added loading states and empty states
-// 7. Improved button design with gradient backgrounds
-// 8. Added subtle shadows for depth (shadow-lg)
 
 // Path: components/Dashboard.tsx
 import { useState } from 'react';
-import { Loader2, Check, AlertCircle } from 'lucide-react';
 
 export default function Dashboard() {
   // [Enhanced component code here]
 }
 ```
 
-Include a summary of improvements at the top.
+Remember: You are enhancing EXISTING code, not creating new features. Focus on making it visually stunning, accessible, and delightful to use."""
 
-Remember: You are enhancing EXISTING code, not creating new features. Focus on making it visually stunning, accessible, and delightful to use.
-"""
+    def _build_user_prompt(self, frontend_code: str, design_style: str, color_scheme: str, target_audience: str) -> str:
+        """Build user prompt with code to enhance"""
+        return f"""# Design Enhancement Mission
 
-    def _build_user_prompt(
-        self,
-        frontend_code: str,
-        design_style: str,
-        color_scheme: str,
-        target_audience: str
-    ) -> str:
-        """Build the user prompt with code to enhance"""
+Enhance the following frontend code with professional UI/UX design.
 
-        return f"""Enhance the following frontend code with professional UI/UX design.
+## Design Preferences
 
-📱 DESIGN PREFERENCES:
-- Design Style: {design_style}
-- Color Scheme: {color_scheme}
-- Target Audience: {target_audience}
+- **Design Style**: {design_style}
+- **Color Scheme**: {color_scheme}
+- **Target Audience**: {target_audience}
 
-🎨 YOUR TASK:
+## Your Task
 
 Take the existing code and enhance it with:
 
@@ -383,7 +491,8 @@ Take the existing code and enhance it with:
 5. **Accessibility** - WCAG 2.1 AA compliance, ARIA labels, keyboard navigation
 6. **Modern Patterns** - Gradients, glassmorphism, subtle shadows
 
-CRITICAL RULES:
+## Critical Rules
+
 - ❌ DO NOT change functionality or remove features
 - ❌ DO NOT break existing behavior
 - ✅ DO enhance visual design with Tailwind CSS
@@ -391,28 +500,26 @@ CRITICAL RULES:
 - ✅ DO ensure accessibility (ARIA, focus states, color contrast)
 - ✅ DO optimize for mobile (responsive, touch-friendly)
 
-CODE TO ENHANCE:
-{frontend_code}
+## Code to Enhance
+
+{frontend_code[:4000]}
 
 Return the enhanced code with a summary of improvements at the top.
 
 Begin your enhanced code now:
 """
 
-    def _extract_improvements_summary(self, enhanced_code: str) -> List[str]:
+    def _extract_improvements_summary(self, enhanced_code: str) -> list:
         """
         Extract design improvements summary from enhanced code
 
-        Looks for comment blocks with numbered improvements.
-        Returns list of improvement descriptions.
+        Looks for comment blocks with numbered improvements
         """
+        import re
 
         improvements = []
 
         try:
-            # Look for numbered improvements in comments
-            import re
-
             # Pattern: // 1. Some improvement
             pattern = r'//\s*\d+\.\s*(.+?)(?=\n|$)'
             matches = re.findall(pattern, enhanced_code, re.MULTILINE)
@@ -420,87 +527,13 @@ Begin your enhanced code now:
             if matches:
                 improvements = [match.strip() for match in matches[:10]]  # Limit to 10
 
-            logger.info(
-                "ui_ux_designer_agent.extracted_improvements",
-                count=len(improvements)
-            )
+            logger.info("extracted_improvements", count=len(improvements))
 
         except Exception as e:
-            logger.warning(
-                "ui_ux_designer_agent.extract_improvements.error",
-                error=str(e)
-            )
-            # Return empty list on error
-            pass
+            logger.warning("extract_improvements_error", error=str(e))
 
         return improvements
 
-    def validate_design_enhancements(self, original_code: str, enhanced_code: str) -> Dict[str, Any]:
-        """
-        Validate that design enhancements didn't break functionality
 
-        Checks:
-        - Same number of components (no components removed)
-        - Same component names (no renaming)
-        - Accessibility improvements (ARIA attributes added)
-        - Animation classes added
-        - No broken syntax
-
-        Returns:
-            {
-                "valid": True/False,
-                "issues": [...],
-                "improvements_detected": {
-                    "aria_labels": 5,
-                    "animations": 12,
-                    "responsive_classes": 8
-                }
-            }
-        """
-
-        issues = []
-        improvements_detected = {
-            "aria_labels": 0,
-            "animations": 0,
-            "responsive_classes": 0,
-            "focus_states": 0,
-            "hover_effects": 0
-        }
-
-        try:
-            # Count ARIA improvements
-            import re
-            improvements_detected["aria_labels"] = len(re.findall(r'aria-\w+', enhanced_code))
-            improvements_detected["animations"] = len(re.findall(r'transition|animate|duration-', enhanced_code))
-            improvements_detected["responsive_classes"] = len(re.findall(r'\b(sm|md|lg|xl|2xl):', enhanced_code))
-            improvements_detected["focus_states"] = len(re.findall(r'focus:', enhanced_code))
-            improvements_detected["hover_effects"] = len(re.findall(r'hover:', enhanced_code))
-
-            # Check for common issues
-            if "className=" not in enhanced_code and "class=" not in enhanced_code:
-                issues.append("No styling classes found - design may not be applied")
-
-            if improvements_detected["aria_labels"] == 0:
-                issues.append("No accessibility improvements detected (missing ARIA labels)")
-
-            if improvements_detected["animations"] == 0:
-                issues.append("No animations or transitions added")
-
-            logger.info(
-                "ui_ux_designer_agent.validation_complete",
-                improvements=improvements_detected,
-                issues_count=len(issues)
-            )
-
-        except Exception as e:
-            logger.warning(
-                "ui_ux_designer_agent.validate_design_enhancements.error",
-                error=str(e)
-            )
-            issues.append(f"Validation error: {str(e)}")
-
-        return {
-            "valid": len(issues) == 0,
-            "issues": issues,
-            "improvements_detected": improvements_detected
-        }
+# Singleton instance
+ui_ux_designer_agent = UIUXDesignerAgent()

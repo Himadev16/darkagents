@@ -1,42 +1,42 @@
 """
-Polyglot Agent - Superior Multi-Language Coding Agent with Validation & Security
-Designed to replace top coding agents like Claude
-
-NEW INTEGRATED FEATURES:
-✅ Advanced File Extraction (6+ patterns)
-✅ Validation Pipeline (74%+ success rate target)
-✅ Security Scanning (OWASP Top 10)
-✅ Auto-fix capabilities
-✅ Production-ready code generation
+Agent 03: Polyglot Developer
+Elite multi-language software engineer for code generation
+PRODUCTION-READY with retry logic, rollback, and validation
 """
-from typing import Dict, Any, List
-from sqlalchemy.orm import Session
+import time
+from typing import Dict, Any
 import structlog
+from sqlalchemy.orm import Session
 
+from backend.database.models import AgentExecution, Project
 from backend.agents.base_agent import BaseAgent
-from backend.database.models import AgentStatus
-from backend.services.claude_service import claude_service
-from backend.services.validation_pipeline import validation_pipeline
-from backend.services.security_agent import security_agent
-from backend.services.file_extractor import file_extractor
+from backend.lib.openrouter import openrouter_client
 
 logger = structlog.get_logger()
 
 
 class PolyglotAgent(BaseAgent):
     """
-    Polyglot Agent - Elite Multi-Language Software Engineer
+    Polyglot Developer Agent
+
+    Elite multi-language software engineer with expertise in 20+ languages.
 
     Capabilities:
-    - Master of 20+ programming languages
-    - Advanced code generation with best practices
+    - Master of Python, JavaScript, TypeScript, Go, Rust, Java, C++, and more
+    - Production-ready code generation with best practices
     - Code review, refactoring, and optimization
     - Debugging and problem-solving
     - Test generation (unit, integration, e2e)
     - Architecture and design patterns
     - Performance optimization
-    - Security vulnerability detection
-    - Cross-language code translation
+    - Security-aware coding
+
+    Production Features:
+    - Retry logic with exponential backoff (3 retries)
+    - Input validation with detailed error messages
+    - Database transaction management with rollback
+    - Graceful error handling
+    - Detailed structured logging
     """
 
     # Supported languages with expertise levels
@@ -55,215 +55,446 @@ class PolyglotAgent(BaseAgent):
         "kotlin": {"expertise": "advanced", "frameworks": ["Ktor", "Spring Boot"]},
         "scala": {"expertise": "intermediate", "frameworks": ["Play", "Akka", "ZIO"]},
         "elixir": {"expertise": "intermediate", "frameworks": ["Phoenix", "Nerves"]},
-        "clojure": {"expertise": "intermediate", "frameworks": ["Ring", "Compojure"]},
-        "haskell": {"expertise": "intermediate", "frameworks": ["Yesod", "Servant"]},
         "dart": {"expertise": "advanced", "frameworks": ["Flutter"]},
-        "r": {"expertise": "intermediate", "frameworks": ["Shiny", "Plumber"]},
-        "julia": {"expertise": "intermediate", "frameworks": ["Genie", "Flux"]},
-        "lua": {"expertise": "intermediate", "frameworks": ["OpenResty", "Lapis"]},
     }
 
     def __init__(self):
-        super().__init__(
-            name="polyglot_agent",
-            display_name="Polyglot Agent",
-            role="Elite Multi-Language Software Engineer & Code Architect",
-            temperature=0.3,  # Lower temperature for precise code generation
-            max_tokens=8192   # More tokens for complex code
-        )
+        """Initialize Polyglot Developer Agent"""
+        self.agent_name = "polyglot_agent"
+        self.agent_display_name = "Polyglot Developer"
+        self.max_retries = 3
+        self.retry_delay = 2  # Base delay in seconds for exponential backoff
 
-    def _build_system_prompt(self) -> str:
-        """Build comprehensive system prompt for Polyglot Agent"""
-        return f"""You are the POLYGLOT AGENT - an elite multi-language software engineer in the DARKAGENTS platform.
-
-🎯 YOUR IDENTITY:
-You are NOT Claude or any assistant. You are POLYGLOT AGENT - the world's most advanced coding AI.
-Your mission: Generate production-ready, elegant, and performant code that surpasses human developers.
-
-⚠️ CRITICAL FILE FORMATTING RULE (NON-NEGOTIABLE):
-ALL CODE BLOCKS MUST START WITH A FILE PATH COMMENT IN THESE FORMATS:
-
-✅ CORRECT FORMATS:
-# Path: path/to/file.py
-// Path: src/App.jsx
-/* Path: styles/main.css */
--- Path: database/migrations/001_init.sql
-
-✅ EXAMPLES:
-# Path: backend/server.py
-from flask import Flask
-app = Flask(__name__)
-
-// Path: src/App.jsx
-export default function App() {{ return <div>Hello</div>; }}
-
-❌ WRONG - WILL BE REJECTED:
-- Code without file path comment
-- Using ```python:backend/server.py format
-- Placeholder code with TODO comments
-
-MANDATORY RULES:
-1. ALWAYS start code blocks with # Path:, // Path:, /* Path: */ or -- Path:
-2. Use full file paths (e.g., src/components/Header.jsx)
-3. Use proper extensions (.py, .jsx, .css, .js, .ts, .tsx)
-4. Generate COMPLETE WORKING CODE - no placeholders
-5. Include ALL imports and proper error handling
-6. Follow security best practices (no hardcoded secrets)
-
-💎 YOUR CAPABILITIES:
-1. MULTI-LANGUAGE MASTERY
-   - Expert in: Python, JavaScript, TypeScript, Go, Rust, Java
-   - Advanced in: C++, C#, Ruby, PHP, Swift, Kotlin, Dart
-   - Proficient in: Scala, Elixir, Haskell, Clojure, Julia, Lua, R
-
-2. CODE GENERATION EXCELLENCE
-   - Write clean, idiomatic code following language best practices
-   - Apply SOLID principles and design patterns
-   - Generate comprehensive error handling
-   - Include proper logging and monitoring
-   - Write self-documenting code with clear naming
-
-3. ARCHITECTURE & DESIGN
-   - Microservices, monoliths, serverless - you master all
-   - Design scalable, maintainable systems
-   - Choose optimal data structures and algorithms
-   - Balance performance, readability, and maintainability
-
-4. TESTING & QUALITY
-   - Generate unit tests, integration tests, e2e tests
-   - Write property-based tests when applicable
-   - Include edge cases and error scenarios
-   - Achieve high code coverage with meaningful tests
-
-5. OPTIMIZATION & PERFORMANCE
-   - Profile and optimize code for speed
-   - Reduce memory footprint
-   - Implement caching strategies
-   - Use async/parallel processing when beneficial
-
-6. SECURITY & BEST PRACTICES
-   - Prevent SQL injection, XSS, CSRF
-   - Implement proper authentication/authorization
-   - Sanitize inputs and validate data
-   - Follow OWASP Top 10 guidelines
-
-7. CODE REVIEW & REFACTORING
-   - Identify code smells and anti-patterns
-   - Suggest refactorings for better maintainability
-   - Improve readability and reduce complexity
-   - Modernize legacy code
-
-8. DEBUGGING & PROBLEM SOLVING
-   - Analyze stack traces and error messages
-   - Identify root causes of bugs
-   - Provide step-by-step debugging strategies
-   - Fix bugs with minimal code changes
-
-🎨 YOUR PERSONALITY:
-- Confident but not arrogant
-- Precise and detail-oriented
-- Pragmatic - balance perfection with practicality
-- Educational - explain your reasoning
-- Proactive - suggest improvements beyond requirements
-
-📋 OUTPUT FORMAT:
-Always structure your responses as:
-1. ANALYSIS: Brief analysis of the task/problem
-2. APPROACH: Your chosen solution strategy
-3. CODE: The implementation (clean, commented, production-ready)
-4. TESTS: Test cases for the code
-5. NOTES: Important considerations, trade-offs, or optimizations
-
-🚀 STANDARDS:
-- Code MUST be production-ready, not prototypes
-- Follow the language's official style guide
-- Include type hints/annotations where supported
-- Write comprehensive docstrings/comments
-- Handle edge cases and errors gracefully
-- Consider performance implications
-- Make code maintainable for teams
-
-Remember: You don't just write code - you craft elegant software solutions that developers admire."""
-
-    def _perform_work(
-        self,
-        input_data: Dict[str, Any],
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
+    def execute(self, project_id: int, input_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
         """
-        Perform polyglot coding work
+        Execute Polyglot Developer Agent
 
-        Handles various coding tasks:
-        - code_generation: Generate code from specifications
-        - code_review: Review and improve existing code
-        - debugging: Debug and fix code issues
-        - refactoring: Refactor code for better quality
-        - testing: Generate comprehensive tests
-        - translation: Translate code between languages
-        - optimization: Optimize code for performance
+        Args:
+            project_id: Project ID
+            input_data: {
+                "task_type": str (code_generation, code_review, debugging, refactoring, testing, optimization),
+                "language": str (python, javascript, typescript, etc.),
+                "requirements": str (task requirements),
+                "existing_code": str (optional, for review/debugging/refactoring)
+            }
+            db: Database session
+
+        Returns:
+            {
+                "success": bool,
+                "task_type": str,
+                "language": str,
+                "output": str (generated code or analysis),
+                "execution_id": int,
+                "tokens_used": int,
+                "cost_usd": float,
+                "error": str (if success=False)
+            }
         """
-        task_type = input_data.get("task_type", "code_generation")
-        language = input_data.get("language", "python")
-        requirements = input_data.get("requirements", "")
-        existing_code = input_data.get("existing_code", None)
+        execution = None
+        try:
+            logger.info(
+                "polyglot_agent_started",
+                project_id=project_id,
+                agent_name=self.agent_name
+            )
 
-        logger.info(
-            "polyglot_agent_starting",
-            task_type=task_type,
-            language=language,
-            has_existing_code=existing_code is not None
-        )
+            # Input validation
+            if not input_data:
+                input_data = {}
 
-        # Route to appropriate handler
-        if task_type == "code_generation":
-            result = self._generate_code(language, requirements, execution, db)
-        elif task_type == "code_review":
-            result = self._review_code(language, existing_code, execution, db)
-        elif task_type == "debugging":
-            result = self._debug_code(language, existing_code, requirements, execution, db)
-        elif task_type == "refactoring":
-            result = self._refactor_code(language, existing_code, execution, db)
-        elif task_type == "testing":
-            result = self._generate_tests(language, existing_code, execution, db)
-        elif task_type == "translation":
-            target_language = input_data.get("target_language", "typescript")
-            result = self._translate_code(language, target_language, existing_code, execution, db)
-        elif task_type == "optimization":
-            result = self._optimize_code(language, existing_code, execution, db)
-        else:
-            # Default to code generation
-            result = self._generate_code(language, requirements, execution, db)
+            task_type = input_data.get("task_type", "code_generation")
+            if task_type not in ["code_generation", "code_review", "debugging", "refactoring", "testing", "optimization"]:
+                raise ValueError(f"Invalid task_type '{task_type}' (must be: code_generation, code_review, debugging, refactoring, testing, optimization)")
 
-        return result
+            language = input_data.get("language", "python")
+            if not language or not isinstance(language, str):
+                raise ValueError("Missing or invalid 'language' (must be non-empty string)")
 
-    def _generate_code(
+            language = language.lower()
+            if language not in self.LANGUAGES:
+                raise ValueError(f"Unsupported language '{language}' (supported: {', '.join(list(self.LANGUAGES.keys())[:10])}...)")
+
+            requirements = input_data.get("requirements", "")
+            existing_code = input_data.get("existing_code", "")
+
+            # Validate based on task type
+            if task_type == "code_generation":
+                if not requirements or not isinstance(requirements, str):
+                    raise ValueError("Missing or invalid 'requirements' for code_generation (must be non-empty string)")
+                if len(requirements.strip()) < 10:
+                    raise ValueError("requirements too short (minimum 10 characters)")
+            elif task_type in ["code_review", "debugging", "refactoring", "testing", "optimization"]:
+                if not existing_code or not isinstance(existing_code, str):
+                    raise ValueError(f"Missing or invalid 'existing_code' for {task_type} (must be non-empty string)")
+                if len(existing_code.strip()) < 10:
+                    raise ValueError("existing_code too short (minimum 10 characters)")
+
+            # Create database record
+            try:
+                execution = AgentExecution(
+                    project_id=project_id,
+                    agent_name=self.agent_name,
+                    agent_display_name=self.agent_display_name,
+                    status="working",
+                    progress=0,
+                    current_task=f"{task_type.replace('_', ' ').title()} in {language}",
+                    tokens_used=0,
+                    cost_usd=0.0
+                )
+                db.add(execution)
+                db.commit()
+                db.refresh(execution)
+
+                logger.info(
+                    "polyglot_execution_created",
+                    execution_id=execution.id,
+                    project_id=project_id,
+                    task_type=task_type,
+                    language=language
+                )
+            except Exception as db_error:
+                logger.error("database_error_creating_execution", error=str(db_error))
+                db.rollback()
+                raise
+
+            # Update progress
+            execution.current_task = f"Processing {task_type} for {language}"
+            execution.progress = 10
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+            # Execute task with retry logic
+            result = self._execute_task_with_retry(
+                task_type=task_type,
+                language=language,
+                requirements=requirements,
+                existing_code=existing_code,
+                project_id=project_id,
+                execution=execution,
+                db=db
+            )
+
+            # Update execution record with results
+            try:
+                execution.status = "completed"
+                execution.progress = 100
+                execution.current_task = f"{task_type.replace('_', ' ').title()} complete"
+                execution.tokens_used = result.get("tokens_used", 0)
+                execution.cost_usd = result.get("cost_usd", 0.0)
+                db.commit()
+
+                logger.info(
+                    "polyglot_agent_completed",
+                    execution_id=execution.id,
+                    project_id=project_id,
+                    task_type=task_type,
+                    tokens_used=result.get("tokens_used", 0),
+                    cost_usd=result.get("cost_usd", 0.0)
+                )
+            except Exception as db_error:
+                logger.warning("database_error_updating_completion", error=str(db_error))
+                db.rollback()
+
+            return {
+                "success": True,
+                "execution_id": execution.id,
+                **result
+            }
+
+        except ValueError as ve:
+            # Validation errors - don't retry, return immediately
+            logger.error(
+                "polyglot_validation_error",
+                project_id=project_id,
+                error=str(ve),
+                error_type="validation_error"
+            )
+
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Validation error: {str(ve)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            return {
+                "success": False,
+                "error": str(ve),
+                "error_type": "validation_error",
+                "execution_id": execution.id if execution else None
+            }
+
+        except Exception as e:
+            # Unexpected errors
+            logger.error(
+                "polyglot_agent_failed",
+                project_id=project_id,
+                error=str(e),
+                error_type=type(e).__name__
+            )
+
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Error: {str(e)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "execution_id": execution.id if execution else None
+            }
+
+    def _execute_task_with_retry(
         self,
+        task_type: str,
         language: str,
         requirements: str,
-        execution,
+        existing_code: str,
+        project_id: int,
+        execution: AgentExecution,
         db: Session
     ) -> Dict[str, Any]:
-        """Generate code from requirements"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Generating {language} code...",
-            20,
-            db
-        )
+        """
+        Execute task with retry logic (exponential backoff)
 
-        # Get language info
+        Retries up to max_retries times with exponential backoff on transient errors
+        """
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.info(
+                    "task_execution_attempt",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    task_type=task_type,
+                    project_id=project_id
+                )
+
+                result = self._execute_task(
+                    task_type=task_type,
+                    language=language,
+                    requirements=requirements,
+                    existing_code=existing_code,
+                    execution=execution,
+                    db=db
+                )
+
+                logger.info(
+                    "task_execution_success",
+                    attempt=attempt,
+                    project_id=project_id,
+                    task_type=task_type
+                )
+
+                return result
+
+            except ValueError as ve:
+                # Don't retry validation errors
+                logger.error("task_execution_validation_error", error=str(ve))
+                raise
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "task_execution_attempt_failed",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    error=str(e),
+                    error_type=type(e).__name__
+                )
+
+                if attempt == self.max_retries:
+                    logger.error(
+                        "task_execution_all_retries_failed",
+                        project_id=project_id,
+                        task_type=task_type,
+                        error=str(e)
+                    )
+                    raise
+
+                # Exponential backoff: 2s, 4s, 8s
+                wait_time = self.retry_delay * (2 ** (attempt - 1))
+                logger.info(
+                    "task_execution_retrying",
+                    wait_time=wait_time,
+                    next_attempt=attempt + 1
+                )
+                time.sleep(wait_time)
+
+        # Should never reach here, but just in case
+        raise last_error if last_error else Exception("Unknown error in retry logic")
+
+    def _execute_task(
+        self,
+        task_type: str,
+        language: str,
+        requirements: str,
+        existing_code: str,
+        execution: AgentExecution,
+        db: Session
+    ) -> Dict[str, Any]:
+        """
+        Execute coding task using Claude Sonnet 4.5
+
+        This is the core method that calls OpenRouter API
+        """
+        logger.info("executing_task", task_type=task_type, language=language)
+
+        system_prompt = self._build_system_prompt(language)
+        user_prompt = self._build_user_prompt(task_type, language, requirements, existing_code)
+
+        # Update progress
+        execution.current_task = f"Calling Claude Sonnet 4.5 for {task_type}"
+        execution.progress = 30
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Call OpenRouter API
+        try:
+            response = openrouter_client.chat.completions.create(
+                model="anthropic/claude-sonnet-4-20250514",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,  # Lower for precise code generation
+                max_tokens=12000
+            )
+
+            # Extract response
+            content = response.choices[0].message.content
+
+            # Extract token usage
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+
+            # Calculate cost (Claude Sonnet 4: $3/1M input, $15/1M output)
+            input_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') else 0
+            output_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
+            cost_usd = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+
+            logger.info(
+                "openrouter_api_success",
+                tokens_used=tokens_used,
+                cost_usd=cost_usd,
+                task_type=task_type
+            )
+
+        except Exception as api_error:
+            logger.error("openrouter_api_error", error=str(api_error), task_type=task_type)
+            raise
+
+        # Update progress
+        execution.current_task = f"Finalizing {task_type}"
+        execution.progress = 90
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        return {
+            "task_type": task_type,
+            "language": language,
+            "output": content,
+            "tokens_used": tokens_used,
+            "cost_usd": round(cost_usd, 4)
+        }
+
+    def _build_system_prompt(self, language: str) -> str:
+        """Build comprehensive system prompt for Polyglot Agent"""
         lang_info = self.LANGUAGES.get(language, {"expertise": "intermediate", "frameworks": []})
+        frameworks = ", ".join(lang_info["frameworks"][:5])
 
-        # Build prompt for code generation
-        prompt = f"""TASK: Code Generation
+        return f"""You are the POLYGLOT AGENT - an elite multi-language software engineer.
 
-LANGUAGE: {language.upper()}
-EXPERTISE LEVEL: {lang_info['expertise'].upper()}
-POPULAR FRAMEWORKS: {', '.join(lang_info['frameworks'][:3])}
+# Your Identity
 
-REQUIREMENTS:
+You are a world-class software engineer with expert-level proficiency in {language.upper()}.
+Your expertise level in {language}: {lang_info['expertise'].upper()}
+Popular frameworks you master: {frameworks}
+
+# Your Mission
+
+Generate production-ready, elegant, and performant code that surpasses human developers.
+Your code should be:
+- **Clean** - Following language idioms and best practices
+- **Secure** - No vulnerabilities, proper input validation
+- **Performant** - Optimized algorithms and data structures
+- **Maintainable** - Clear naming, proper documentation
+- **Tested** - Include test cases when appropriate
+
+# Multi-Language Expertise
+
+You are proficient in 20+ languages:
+- **Expert**: Python, JavaScript, TypeScript, Go, Rust, Java
+- **Advanced**: C++, C#, Ruby, PHP, Swift, Kotlin, Dart
+- **Intermediate**: Scala, Elixir, Haskell, Clojure, Julia, Lua, R
+
+# Code Generation Standards
+
+1. **Best Practices**
+   - Follow the language's official style guide
+   - Use type hints/annotations where supported
+   - Include comprehensive error handling
+   - Add logging for production code
+   - Consider edge cases
+
+2. **Security**
+   - Prevent SQL injection, XSS, CSRF
+   - Sanitize inputs and validate data
+   - No hardcoded secrets or credentials
+   - Follow OWASP Top 10 guidelines
+
+3. **Performance**
+   - Choose optimal data structures
+   - Avoid unnecessary loops
+   - Use async/parallel processing when beneficial
+   - Consider memory footprint
+
+4. **Architecture**
+   - Apply SOLID principles
+   - Use appropriate design patterns
+   - Maintain separation of concerns
+   - Make code testable
+
+# Output Format
+
+Structure your responses clearly:
+
+1. **ANALYSIS** - Brief analysis of the task
+2. **APPROACH** - Your solution strategy
+3. **CODE** - Clean, production-ready implementation
+4. **EXPLANATION** - Key decisions and trade-offs
+5. **NOTES** - Important considerations or optimizations
+
+# Quality Standards
+
+- Code MUST be production-ready, not prototypes
+- Include proper imports and dependencies
+- Add docstrings/comments for complex logic
+- Handle errors gracefully
+- Make code maintainable for teams
+
+Remember: You craft elegant software solutions that developers admire."""
+
+    def _build_user_prompt(self, task_type: str, language: str, requirements: str, existing_code: str) -> str:
+        """Build user prompt based on task type"""
+        if task_type == "code_generation":
+            return f"""# Task: Code Generation
+
+**Language**: {language.upper()}
+
+**Requirements**:
 {requirements}
 
 Generate production-ready {language} code that fulfills these requirements.
@@ -272,144 +503,19 @@ Follow the OUTPUT FORMAT specified in your system prompt:
 1. ANALYSIS
 2. APPROACH
 3. CODE
-4. TESTS
+4. EXPLANATION
 5. NOTES
 
 Make it exceptional."""
 
-        # Generate code using Claude
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Analyzing requirements and designing solution...",
-            40,
-            db
-        )
+        elif task_type == "code_review":
+            return f"""# Task: Code Review
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+**Language**: {language.upper()}
 
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Extracting code files...",
-            60,
-            db
-        )
-
-        # 🔥 STEP 1: Extract files using advanced pattern matching
-        files = file_extractor.extract_files(response["content"])
-        logger.info(f"Extracted {len(files)} files")
-
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Validating code quality...",
-            70,
-            db
-        )
-
-        # 🔥 STEP 2: Validate and refine code
-        if files:
-            validated_files = validation_pipeline.validate_and_refine(files)
-            validation_results = validation_pipeline.calculate_success_rate(validated_files)
-
-            logger.info(
-                f"Validation: {validation_results['success_rate']:.1f}% success rate "
-                f"({validation_results['validated_files']}/{validation_results['total_files']} files)"
-            )
-
-            self._update_status(
-                execution,
-                AgentStatus.WORKING,
-                "Scanning for security vulnerabilities...",
-                80,
-                db
-            )
-
-            # 🔥 STEP 3: Security scan
-            security_issues = security_agent.scan_code(validated_files)
-            critical_issues = [i for i in security_issues if i['severity'] == 'critical']
-
-            if critical_issues:
-                logger.error(f"🔴 {len(critical_issues)} CRITICAL security issues found!")
-
-            self._update_status(
-                execution,
-                AgentStatus.WORKING,
-                "Finalizing code generation...",
-                90,
-                db
-            )
-
-            # Update token tracking
-            execution.tokens_used += response["usage"]["total_tokens"]
-            execution.cost_usd = round(
-                (response["usage"]["input_tokens"] * 0.003 / 1000) +
-                (response["usage"]["output_tokens"] * 0.015 / 1000),
-                6
-            )
-            db.commit()
-
-            return {
-                "success": True,
-                "task_type": "code_generation",
-                "language": language,
-                "output": response["content"],
-                "files": validated_files,
-                "validation": validation_results,
-                "security_issues": security_issues,
-                "critical_issues_count": len(critical_issues),
-                "tokens_used": response["usage"]["total_tokens"],
-                "cost_usd": execution.cost_usd
-            }
-        else:
-            logger.error("No files extracted from response")
-            execution.tokens_used += response["usage"]["total_tokens"]
-            execution.cost_usd = round(
-                (response["usage"]["input_tokens"] * 0.003 / 1000) +
-                (response["usage"]["output_tokens"] * 0.015 / 1000),
-                6
-            )
-            db.commit()
-
-            return {
-                "success": False,
-                "task_type": "code_generation",
-                "language": language,
-                "output": response["content"],
-                "error": "Failed to extract code files",
-                "tokens_used": response["usage"]["total_tokens"],
-                "cost_usd": execution.cost_usd
-            }
-
-    def _review_code(
-        self,
-        language: str,
-        code: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Review and improve existing code"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Reviewing {language} code...",
-            30,
-            db
-        )
-
-        prompt = f"""TASK: Code Review
-
-LANGUAGE: {language.upper()}
-
-CODE TO REVIEW:
+**Code to Review**:
 ```{language}
-{code}
+{existing_code[:3000]}
 ```
 
 Perform a comprehensive code review:
@@ -422,127 +528,35 @@ Perform a comprehensive code review:
 
 Be thorough but constructive."""
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        elif task_type == "debugging":
+            error_info = requirements or "Debug this code and fix any issues"
+            return f"""# Task: Debugging
 
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Code review complete",
-            90,
-            db
-        )
+**Language**: {language.upper()}
 
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "code_review",
-            "language": language,
-            "review": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
-
-    def _debug_code(
-        self,
-        language: str,
-        code: str,
-        error_info: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Debug code and fix issues"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Debugging {language} code...",
-            35,
-            db
-        )
-
-        prompt = f"""TASK: Debugging
-
-LANGUAGE: {language.upper()}
-
-PROBLEMATIC CODE:
+**Problematic Code**:
 ```{language}
-{code}
+{existing_code[:3000]}
 ```
 
-ERROR/ISSUE:
+**Issue/Error**:
 {error_info}
 
 Debug this code:
-1. Identify the root cause of the issue
+1. Identify the root cause
 2. Explain why the error occurs
 3. Provide the fixed code
 4. Suggest preventive measures
 5. Add error handling if missing"""
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        elif task_type == "refactoring":
+            return f"""# Task: Code Refactoring
 
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Debugging complete, fix applied",
-            85,
-            db
-        )
+**Language**: {language.upper()}
 
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "debugging",
-            "language": language,
-            "solution": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
-
-    def _refactor_code(
-        self,
-        language: str,
-        code: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Refactor code for better quality"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Refactoring {language} code...",
-            40,
-            db
-        )
-
-        prompt = f"""TASK: Code Refactoring
-
-LANGUAGE: {language.upper()}
-
-CODE TO REFACTOR:
+**Code to Refactor**:
 ```{language}
-{code}
+{existing_code[:3000]}
 ```
 
 Refactor this code to improve:
@@ -555,60 +569,14 @@ Refactor this code to improve:
 
 Provide the refactored code with explanations."""
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        elif task_type == "testing":
+            return f"""# Task: Test Generation
 
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Refactoring complete",
-            88,
-            db
-        )
+**Language**: {language.upper()}
 
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "refactoring",
-            "language": language,
-            "refactored_code": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
-
-    def _generate_tests(
-        self,
-        language: str,
-        code: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Generate comprehensive tests for code"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Generating tests for {language} code...",
-            45,
-            db
-        )
-
-        prompt = f"""TASK: Test Generation
-
-LANGUAGE: {language.upper()}
-
-CODE TO TEST:
+**Code to Test**:
 ```{language}
-{code}
+{existing_code[:3000]}
 ```
 
 Generate comprehensive tests:
@@ -620,126 +588,14 @@ Generate comprehensive tests:
 
 Use the appropriate testing framework for {language}."""
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        elif task_type == "optimization":
+            return f"""# Task: Performance Optimization
 
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Test generation complete",
-            92,
-            db
-        )
+**Language**: {language.upper()}
 
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "testing",
-            "language": language,
-            "tests": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
-
-    def _translate_code(
-        self,
-        source_lang: str,
-        target_lang: str,
-        code: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Translate code from one language to another"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Translating from {source_lang} to {target_lang}...",
-            50,
-            db
-        )
-
-        prompt = f"""TASK: Code Translation
-
-SOURCE LANGUAGE: {source_lang.upper()}
-TARGET LANGUAGE: {target_lang.upper()}
-
-CODE TO TRANSLATE:
-```{source_lang}
-{code}
-```
-
-Translate this code to {target_lang}:
-1. Preserve functionality exactly
-2. Use idiomatic {target_lang} patterns
-3. Adapt to {target_lang} conventions
-4. Update dependencies/imports appropriately
-5. Maintain code quality and readability"""
-
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
-
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Translation complete",
-            95,
-            db
-        )
-
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "translation",
-            "source_language": source_lang,
-            "target_language": target_lang,
-            "translated_code": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
-
-    def _optimize_code(
-        self,
-        language: str,
-        code: str,
-        execution,
-        db: Session
-    ) -> Dict[str, Any]:
-        """Optimize code for performance"""
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            f"Optimizing {language} code...",
-            42,
-            db
-        )
-
-        prompt = f"""TASK: Performance Optimization
-
-LANGUAGE: {language.upper()}
-
-CODE TO OPTIMIZE:
+**Code to Optimize**:
 ```{language}
-{code}
+{existing_code[:3000]}
 ```
 
 Optimize this code for performance:
@@ -753,36 +609,8 @@ Optimize this code for performance:
 
 Provide the optimized code with performance analysis."""
 
-        response = claude_service.generate(
-            messages=[{"role": "user", "content": prompt}],
-            system=self.system_prompt,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
-
-        self._update_status(
-            execution,
-            AgentStatus.WORKING,
-            "Optimization complete",
-            94,
-            db
-        )
-
-        execution.tokens_used += response["usage"]["total_tokens"]
-        execution.cost_usd = round(
-            (response["usage"]["input_tokens"] * 0.003 / 1000) +
-            (response["usage"]["output_tokens"] * 0.015 / 1000),
-            6
-        )
-        db.commit()
-
-        return {
-            "success": True,
-            "task_type": "optimization",
-            "language": language,
-            "optimized_code": response["content"],
-            "tokens_used": response["usage"]["total_tokens"]
-        }
+        else:
+            return f"Task: {task_type}\nLanguage: {language}\nRequirements: {requirements}"
 
 
 # Singleton instance

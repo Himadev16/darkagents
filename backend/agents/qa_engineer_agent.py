@@ -1,150 +1,303 @@
 """
-Agent 05: QA Engineer Agent
-=============================
-
-The QA Engineer Agent is a senior quality assurance engineer that analyzes code,
-generates comprehensive test suites, and identifies bugs.
-
-Input: Complete codebase from Polyglot + Designer agents
-Output: Test suite + bug reports, including:
-  - Unit tests (pytest, Jest)
-  - Integration tests (API testing)
-  - E2E tests (Playwright/Cypress)
-  - Performance tests (load testing, benchmarks)
-  - Bug reports (severity levels, reproduction steps)
-  - Test coverage report
-  - Quality score
-
-Does NOT fix bugs - only identifies and reports them.
+Agent 05: QA Engineer
+Senior QA engineer that generates comprehensive test suites and identifies bugs
+PRODUCTION-READY with retry logic, rollback, and validation
 """
-
-import json
-from typing import Dict, Any, Optional, List
-from datetime import datetime
-from sqlalchemy.orm import Session
+import time
+from typing import Dict, Any, List
 import structlog
+from sqlalchemy.orm import Session
 
-from backend.services.claude_service import claude_service
-from backend.models import Project, AgentExecution
+from backend.database.models import AgentExecution, Project
+from backend.agents.base_agent import BaseAgent
+from backend.lib.openrouter import openrouter_client
 
-logger = structlog.get_logger(__name__)
+logger = structlog.get_logger()
 
 
-class QAEngineerAgent:
+class QAEngineerAgent(BaseAgent):
     """
-    Agent 05: QA Engineer
+    QA Engineer Agent
 
     Senior QA engineer with 10+ years of testing experience.
-    Specializes in test automation, bug detection, and quality assurance.
+
+    Capabilities:
+    - Comprehensive test suite generation (unit, integration, E2E)
+    - Bug detection and reporting (severity levels, reproduction steps)
+    - Test coverage analysis (line coverage, branch coverage)
+    - Performance testing (load testing, benchmarks)
+    - Security testing (SQL injection, XSS, CSRF)
+    - Code quality assessment (quality score 0-100)
+
+    Production Features:
+    - Retry logic with exponential backoff (3 retries)
+    - Input validation with detailed error messages
+    - Database transaction management with rollback
+    - Graceful error handling
+    - Detailed structured logging
     """
 
     def __init__(self):
+        """Initialize QA Engineer Agent"""
         self.agent_name = "qa_engineer"
         self.agent_display_name = "QA Engineer"
-        self.agent_description = "Senior QA engineer - Generates test suite and identifies bugs"
-        self.model = "anthropic/claude-sonnet-4.5"
-        self.temperature = 0.3  # Precise, methodical testing
-        self.max_tokens = 12000  # Comprehensive test generation
+        self.max_retries = 3
+        self.retry_delay = 2  # Base delay in seconds for exponential backoff
 
     def execute(self, project_id: int, input_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
         """
-        Execute the QA Engineer Agent
+        Execute QA Engineer Agent
 
         Args:
-            project_id: ID of the project
-            input_data: Must contain 'codebase' or 'code'
+            project_id: Project ID
+            input_data: {
+                "codebase": str (code to analyze and test),
+                "test_framework": str (optional, e.g., "pytest", "jest", "auto-detect"),
+                "coverage_target": int (optional, target coverage percentage),
+                "test_types": list (optional, e.g., ["unit", "integration", "e2e"])
+            }
             db: Database session
 
         Returns:
-            Test suite + bug reports with quality score
+            {
+                "success": bool,
+                "test_suite": str (comprehensive test suite code),
+                "bugs_found": list (bug reports with severity),
+                "quality_score": int (0-100),
+                "coverage_estimate": int (estimated coverage %),
+                "execution_id": int,
+                "tokens_used": int,
+                "cost_usd": float,
+                "error": str (if success=False)
+            }
         """
+        execution = None
         try:
             logger.info(
-                "qa_engineer_agent.execute.start",
+                "qa_engineer_started",
                 project_id=project_id,
-                input_data_keys=list(input_data.keys())
+                agent_name=self.agent_name
             )
 
-            # Create agent execution record
-            execution = AgentExecution(
-                project_id=project_id,
-                agent_name=self.agent_name,
-                agent_display_name=self.agent_display_name,
-                status="running",
-                started_at=datetime.utcnow()
-            )
-            db.add(execution)
-            db.commit()
-            db.refresh(execution)
+            # Input validation
+            if not input_data:
+                input_data = {}
 
-            # Get codebase from input
             codebase = input_data.get("codebase") or input_data.get("code", "")
-            if not codebase:
-                raise ValueError("Missing 'codebase' or 'code' in input_data")
+            if not codebase or not isinstance(codebase, str):
+                raise ValueError("Missing or invalid 'codebase' (must be non-empty string)")
 
-            # Optional: Get testing preferences
+            if len(codebase.strip()) < 20:
+                raise ValueError("codebase too short (minimum 20 characters)")
+
+            # Optional fields with safe defaults
             test_framework = input_data.get("test_framework", "auto-detect")
             coverage_target = input_data.get("coverage_target", 80)
             test_types = input_data.get("test_types", ["unit", "integration", "e2e", "performance"])
 
-            # Generate tests and bug reports
-            logger.info("qa_engineer_agent.generating_tests_and_bugs")
-            qa_results = self._analyze_and_test(
+            # Validate coverage_target
+            if not isinstance(coverage_target, int) or coverage_target < 0 or coverage_target > 100:
+                raise ValueError("coverage_target must be integer between 0 and 100")
+
+            # Create database record
+            try:
+                execution = AgentExecution(
+                    project_id=project_id,
+                    agent_name=self.agent_name,
+                    agent_display_name=self.agent_display_name,
+                    status="working",
+                    progress=0,
+                    current_task="Analyzing codebase for bugs",
+                    tokens_used=0,
+                    cost_usd=0.0
+                )
+                db.add(execution)
+                db.commit()
+                db.refresh(execution)
+
+                logger.info(
+                    "qa_engineer_execution_created",
+                    execution_id=execution.id,
+                    project_id=project_id
+                )
+            except Exception as db_error:
+                logger.error("database_error_creating_execution", error=str(db_error))
+                db.rollback()
+                raise
+
+            # Update progress
+            execution.current_task = "Generating test suite and identifying bugs"
+            execution.progress = 10
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+
+            # Analyze and test with retry logic
+            result = self._analyze_and_test_with_retry(
                 codebase=codebase,
                 test_framework=test_framework,
                 coverage_target=coverage_target,
                 test_types=test_types,
+                project_id=project_id,
                 execution=execution,
                 db=db
             )
 
-            # Update execution record
-            execution.status = "completed"
-            execution.completed_at = datetime.utcnow()
-            execution.output = qa_results["content"]
-            execution.tokens_used = qa_results["tokens_used"]
-            execution.cost_usd = qa_results["cost_usd"]
-            db.commit()
+            # Update execution record with results
+            try:
+                execution.status = "completed"
+                execution.progress = 100
+                execution.current_task = "QA analysis complete"
+                execution.tokens_used = result.get("tokens_used", 0)
+                execution.cost_usd = result.get("cost_usd", 0.0)
+                db.commit()
 
-            logger.info(
-                "qa_engineer_agent.execute.complete",
-                execution_id=execution.id,
-                tokens_used=qa_results["tokens_used"],
-                cost_usd=qa_results["cost_usd"],
-                bugs_found=len(qa_results.get("bugs", []))
-            )
+                logger.info(
+                    "qa_engineer_completed",
+                    execution_id=execution.id,
+                    project_id=project_id,
+                    bugs_found=len(result.get("bugs_found", [])),
+                    quality_score=result.get("quality_score", 0),
+                    tokens_used=result.get("tokens_used", 0),
+                    cost_usd=result.get("cost_usd", 0.0)
+                )
+            except Exception as db_error:
+                logger.warning("database_error_updating_completion", error=str(db_error))
+                db.rollback()
 
             return {
                 "success": True,
                 "execution_id": execution.id,
-                "agent_name": self.agent_name,
-                "test_suite": qa_results["content"],
-                "bugs_found": qa_results.get("bugs", []),
-                "quality_score": qa_results.get("quality_score", 0),
-                "coverage_estimate": qa_results.get("coverage_estimate", 0),
-                "tokens_used": qa_results["tokens_used"],
-                "cost_usd": qa_results["cost_usd"],
+                **result
+            }
+
+        except ValueError as ve:
+            # Validation errors - don't retry, return immediately
+            logger.error(
+                "qa_engineer_validation_error",
+                project_id=project_id,
+                error=str(ve),
+                error_type="validation_error"
+            )
+
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Validation error: {str(ve)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
+
+            return {
+                "success": False,
+                "error": str(ve),
+                "error_type": "validation_error",
+                "execution_id": execution.id if execution else None
             }
 
         except Exception as e:
+            # Unexpected errors
             logger.error(
-                "qa_engineer_agent.execute.error",
+                "qa_engineer_failed",
+                project_id=project_id,
                 error=str(e),
-                project_id=project_id
+                error_type=type(e).__name__
             )
 
-            # Update execution record with error
-            if 'execution' in locals():
-                execution.status = "failed"
-                execution.error_message = str(e)
-                execution.completed_at = datetime.utcnow()
-                db.commit()
+            if execution:
+                try:
+                    execution.status = "failed"
+                    execution.current_task = f"Error: {str(e)}"
+                    db.commit()
+                except Exception:
+                    db.rollback()
 
             return {
                 "success": False,
                 "error": str(e),
-                "agent_name": self.agent_name
+                "error_type": type(e).__name__,
+                "execution_id": execution.id if execution else None
             }
+
+    def _analyze_and_test_with_retry(
+        self,
+        codebase: str,
+        test_framework: str,
+        coverage_target: int,
+        test_types: List[str],
+        project_id: int,
+        execution: AgentExecution,
+        db: Session
+    ) -> Dict[str, Any]:
+        """
+        Analyze and test with retry logic (exponential backoff)
+
+        Retries up to max_retries times with exponential backoff on transient errors
+        """
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.info(
+                    "qa_analysis_attempt",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    project_id=project_id
+                )
+
+                result = self._analyze_and_test(
+                    codebase=codebase,
+                    test_framework=test_framework,
+                    coverage_target=coverage_target,
+                    test_types=test_types,
+                    execution=execution,
+                    db=db
+                )
+
+                logger.info(
+                    "qa_analysis_success",
+                    attempt=attempt,
+                    project_id=project_id,
+                    bugs_found=len(result.get("bugs_found", []))
+                )
+
+                return result
+
+            except ValueError as ve:
+                # Don't retry validation errors
+                logger.error("qa_analysis_validation_error", error=str(ve))
+                raise
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    "qa_analysis_attempt_failed",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    error=str(e),
+                    error_type=type(e).__name__
+                )
+
+                if attempt == self.max_retries:
+                    logger.error(
+                        "qa_analysis_all_retries_failed",
+                        project_id=project_id,
+                        error=str(e)
+                    )
+                    raise
+
+                # Exponential backoff: 2s, 4s, 8s
+                wait_time = self.retry_delay * (2 ** (attempt - 1))
+                logger.info(
+                    "qa_analysis_retrying",
+                    wait_time=wait_time,
+                    next_attempt=attempt + 1
+                )
+                time.sleep(wait_time)
+
+        # Should never reach here, but just in case
+        raise last_error if last_error else Exception("Unknown error in retry logic")
 
     def _analyze_and_test(
         self,
@@ -156,66 +309,85 @@ class QAEngineerAgent:
         db: Session
     ) -> Dict[str, Any]:
         """
-        Analyze code for bugs and generate comprehensive test suite
+        Analyze code for bugs and generate comprehensive test suite using Claude Sonnet 4.5
 
-        Returns:
-            {
-                "content": "Complete test suite code",
-                "tokens_used": 12500,
-                "cost_usd": 0.07,
-                "bugs": [
-                    {
-                        "severity": "high",
-                        "type": "logic_error",
-                        "location": "api/routes/users.py:45",
-                        "description": "Missing validation for email uniqueness",
-                        "impact": "Duplicate users can be created",
-                        "reproduction_steps": ["..."]
-                    }
-                ],
-                "quality_score": 75,
-                "coverage_estimate": 82
-            }
+        This is the core method that calls OpenRouter API
         """
+        logger.info("analyzing_and_testing", test_framework=test_framework, coverage_target=coverage_target)
 
         system_prompt = self._build_system_prompt()
-        user_prompt = self._build_user_prompt(
-            codebase,
-            test_framework,
-            coverage_target,
-            test_types
-        )
+        user_prompt = self._build_user_prompt(codebase, test_framework, coverage_target, test_types)
 
-        # Call Claude API
-        response = claude_service.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            model=self.model,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens
-        )
+        # Update progress
+        execution.current_task = "Calling Claude Sonnet 4.5 for QA analysis"
+        execution.progress = 30
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Call OpenRouter API
+        try:
+            response = openrouter_client.chat.completions.create(
+                model="anthropic/claude-sonnet-4-20250514",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.3,  # Precise, methodical testing
+                max_tokens=12000
+            )
+
+            # Extract response
+            content = response.choices[0].message.content
+
+            # Extract token usage
+            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+
+            # Calculate cost (Claude Sonnet 4: $3/1M input, $15/1M output)
+            input_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') else 0
+            output_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
+            cost_usd = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+
+            logger.info(
+                "openrouter_api_success",
+                tokens_used=tokens_used,
+                cost_usd=cost_usd
+            )
+
+        except Exception as api_error:
+            logger.error("openrouter_api_error", error=str(api_error))
+            raise
+
+        # Update progress
+        execution.current_task = "Extracting bug reports and quality metrics"
+        execution.progress = 80
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
 
         # Extract structured data from response
-        bugs = self._extract_bugs(response["content"])
-        quality_score = self._calculate_quality_score(response["content"], bugs)
-        coverage_estimate = self._estimate_coverage(response["content"])
+        bugs_found = self._extract_bugs(content)
+        quality_score = self._calculate_quality_score(content, bugs_found)
+        coverage_estimate = self._estimate_coverage(content)
 
         return {
-            "content": response["content"],
-            "tokens_used": response["tokens_used"],
-            "cost_usd": response["cost_usd"],
-            "bugs": bugs,
+            "test_suite": content,
+            "bugs_found": bugs_found,
             "quality_score": quality_score,
-            "coverage_estimate": coverage_estimate
+            "coverage_estimate": coverage_estimate,
+            "tokens_used": tokens_used,
+            "cost_usd": round(cost_usd, 4)
         }
 
     def _build_system_prompt(self) -> str:
-        """Build the system prompt for the QA Engineer Agent"""
+        """Build comprehensive system prompt for QA Engineer agent"""
+        return """You are the QA ENGINEER AGENT - a senior quality assurance engineer with 10+ years of testing experience.
 
-        return """You are the QA ENGINEER AGENT - a senior quality assurance engineer with 10+ years of testing experience in the DARKAGENTS platform.
+# Your Identity
 
-🎯 YOUR ROLE:
-You analyze code, identify bugs, and generate comprehensive test suites. You specialize in:
+You are a world-class QA engineer specializing in:
 - Test automation (pytest, Jest, Cypress, Playwright)
 - Bug detection and reporting
 - Test coverage analysis
@@ -223,48 +395,17 @@ You analyze code, identify bugs, and generate comprehensive test suites. You spe
 - Security testing
 - Code quality assessment
 
-🔍 YOUR EXPERTISE:
-- Test Frameworks (pytest, unittest, Jest, Mocha, Cypress, Playwright)
-- Test Types (unit, integration, E2E, performance, security)
-- Bug Severity Assessment (critical, high, medium, low)
-- Code Review (logic errors, edge cases, race conditions)
-- Coverage Analysis (line coverage, branch coverage)
-- Quality Metrics (cyclomatic complexity, maintainability)
+# Your Mission
 
-📋 YOUR DELIVERABLES:
-You must produce:
+Analyze code for bugs and generate comprehensive test suites that ensure:
+- **Complete Coverage** - Unit, integration, E2E tests
+- **Bug Detection** - Identify logic errors, security flaws, edge cases
+- **Quality Metrics** - Coverage estimation, quality score
+- **Actionable Reports** - Clear bug reports with reproduction steps
 
-1. **Comprehensive Test Suite**
-   - Unit tests (test individual functions/methods)
-   - Integration tests (test API endpoints, database interactions)
-   - E2E tests (test user flows, UI interactions)
-   - Performance tests (load testing, stress testing)
-   - Edge case coverage (null values, empty arrays, large inputs)
+# Test Framework Standards
 
-2. **Bug Reports**
-   - Severity levels (critical, high, medium, low)
-   - Bug type (logic error, validation error, security flaw, performance issue)
-   - Location (file:line)
-   - Description (what's wrong)
-   - Impact (what happens if not fixed)
-   - Reproduction steps (how to trigger the bug)
-
-3. **Test Coverage Report**
-   - Estimated line coverage (%)
-   - Estimated branch coverage (%)
-   - Untested critical paths
-   - Missing edge cases
-
-4. **Quality Score**
-   - Overall quality score (0-100)
-   - Code quality metrics
-   - Security assessment
-   - Performance assessment
-   - Maintainability assessment
-
-🔥 CRITICAL TESTING RULES:
-
-1. **Test Structure (pytest for Python):**
+**Python Testing (pytest):**
 ```python
 # tests/test_user_api.py
 import pytest
@@ -274,10 +415,7 @@ from app.main import app
 client = TestClient(app)
 
 class TestUserAPI:
-    # Test user API endpoints
-
     def test_create_user_success(self):
-        # Test successful user creation
         response = client.post("/api/users", json={
             "email": "test@example.com",
             "password": "SecurePass123!"
@@ -286,30 +424,14 @@ class TestUserAPI:
         assert response.json()["email"] == "test@example.com"
 
     def test_create_user_duplicate_email(self):
-        # Test user creation with duplicate email
         # First user
-        client.post("/api/users", json={
-            "email": "test@example.com",
-            "password": "Pass123!"
-        })
+        client.post("/api/users", json={"email": "test@example.com", "password": "Pass123!"})
         # Duplicate
-        response = client.post("/api/users", json={
-            "email": "test@example.com",
-            "password": "Pass456!"
-        })
+        response = client.post("/api/users", json={"email": "test@example.com", "password": "Pass456!"})
         assert response.status_code == 409
-        assert "already exists" in response.json()["detail"]
-
-    def test_create_user_invalid_email(self):
-        # Test user creation with invalid email
-        response = client.post("/api/users", json={
-            "email": "invalid-email",
-            "password": "Pass123!"
-        })
-        assert response.status_code == 400
 ```
 
-2. **Test Structure (Jest for JavaScript/TypeScript):**
+**JavaScript/TypeScript Testing (Jest):**
 ```javascript
 // tests/userApi.test.ts
 import { describe, test, expect } from '@jest/globals';
@@ -320,62 +442,17 @@ describe('User API', () => {
   test('should create user successfully', async () => {
     const response = await request(app)
       .post('/api/users')
-      .send({
-        email: 'test@example.com',
-        password: 'SecurePass123!'
-      });
+      .send({ email: 'test@example.com', password: 'SecurePass123!' });
 
     expect(response.status).toBe(201);
     expect(response.body.email).toBe('test@example.com');
   });
-
-  test('should reject duplicate email', async () => {
-    // Create first user
-    await request(app)
-      .post('/api/users')
-      .send({ email: 'test@example.com', password: 'Pass123!' });
-
-    // Try duplicate
-    const response = await request(app)
-      .post('/api/users')
-      .send({ email: 'test@example.com', password: 'Pass456!' });
-
-    expect(response.status).toBe(409);
-    expect(response.body.error).toContain('already exists');
-  });
 });
 ```
 
-3. **E2E Tests (Playwright):**
-```javascript
-// e2e/userRegistration.spec.ts
-import { test, expect } from '@playwright/test';
+# Bug Report Format
 
-test.describe('User Registration', () => {
-  test('should register new user', async ({ page }) => {
-    await page.goto('/register');
-
-    await page.fill('input[name="email"]', 'test@example.com');
-    await page.fill('input[name="password"]', 'SecurePass123!');
-    await page.click('button[type="submit"]');
-
-    await expect(page).toHaveURL('/dashboard');
-    await expect(page.locator('h1')).toContainText('Welcome');
-  });
-
-  test('should show error for invalid email', async ({ page }) => {
-    await page.goto('/register');
-
-    await page.fill('input[name="email"]', 'invalid-email');
-    await page.fill('input[name="password"]', 'Pass123!');
-    await page.click('button[type="submit"]');
-
-    await expect(page.locator('.error')).toContainText('Invalid email');
-  });
-});
-```
-
-4. **Bug Report Format:**
+**Required Structure:**
 ```markdown
 ## BUG REPORT
 
@@ -383,84 +460,44 @@ test.describe('User Registration', () => {
 - **Severity:** HIGH
 - **Type:** Validation Error
 - **Location:** `backend/api/routes/users.py:45`
-- **Description:** The user registration endpoint doesn't validate email uniqueness before creating user
-- **Impact:** Duplicate users can be created with the same email, causing authentication issues
+- **Description:** User registration doesn't validate email uniqueness
+- **Impact:** Duplicate users can be created with same email
 - **Reproduction Steps:**
   1. POST /api/users with email "test@example.com"
-  2. POST /api/users again with same email "test@example.com"
-  3. Second request succeeds when it should return 409 Conflict
-- **Recommended Fix:** Add unique constraint check before user.save()
-
-### Bug #2: SQL Injection Vulnerability
-- **Severity:** CRITICAL
-- **Type:** Security Flaw
-- **Location:** `backend/api/routes/search.py:28`
-- **Description:** Search query uses string concatenation instead of parameterized query
-- **Impact:** Attacker can inject SQL to access/delete database
-- **Reproduction Steps:**
-  1. POST /api/search with query: `'; DROP TABLE users; --`
-  2. SQL injection executes, deletes users table
-- **Recommended Fix:** Use parameterized queries or ORM methods
+  2. POST /api/users again with same email
+  3. Second request succeeds when it should return 409
+- **Recommended Fix:** Add unique constraint check
 ```
 
-5. **Coverage Report Format:**
-```markdown
-## TEST COVERAGE REPORT
-
-### Overall Coverage: 82%
-- Line Coverage: 85%
-- Branch Coverage: 78%
-- Function Coverage: 90%
-
-### Untested Critical Paths:
-1. Error handling in payment processing (payment.py:120-145)
-2. Edge case: empty cart checkout (cart.py:89)
-3. Race condition: concurrent user updates (user.py:234)
-
-### Missing Test Types:
-- ❌ Performance tests for search endpoint (expected <200ms)
-- ❌ Load testing for authentication (handle 1000 concurrent logins)
-- ⚠️ Limited E2E coverage for checkout flow
-
-### Recommendations:
-1. Add tests for payment error scenarios
-2. Test edge cases (empty, null, very large inputs)
-3. Add performance benchmarks for critical endpoints
-4. Increase E2E coverage for main user flows
-```
-
-💡 TESTING BEST PRACTICES:
-
-1. **Test Naming:** Use descriptive names that explain what is being tested
-2. **AAA Pattern:** Arrange, Act, Assert (setup, execute, verify)
-3. **Test Independence:** Each test should be independent and idempotent
-4. **Edge Cases:** Test null, empty, min, max, invalid inputs
-5. **Error Cases:** Test all error paths and exception handling
-6. **Mocking:** Mock external dependencies (APIs, databases, file system)
-7. **Performance:** Include benchmarks for critical operations
-8. **Security:** Test for common vulnerabilities (SQL injection, XSS, CSRF)
-
-🔍 BUG SEVERITY LEVELS:
+# Severity Levels
 
 - **CRITICAL:** Security vulnerability, data loss, system crash
 - **HIGH:** Major functionality broken, user cannot complete core task
 - **MEDIUM:** Minor functionality broken, workaround exists
 - **LOW:** Cosmetic issue, typo, minor UX improvement
 
-🎯 OUTPUT FORMAT:
+# Your Deliverables
 
-Return a comprehensive document with:
+Generate ALL of the following:
 
-1. **Test Suite Code** (pytest, Jest, Playwright)
-2. **Bug Reports** (severity, type, location, impact, reproduction)
-3. **Coverage Report** (estimated %, untested paths)
-4. **Quality Score** (0-100 with breakdown)
-5. **Recommendations** (what to fix first, testing gaps)
+1. **Test Suite** - Comprehensive tests (unit, integration, E2E)
+2. **Bug Reports** - Detailed reports with severity and reproduction steps
+3. **Coverage Report** - Estimated coverage %, untested paths
+4. **Quality Score** - Overall quality (0-100) with breakdown
+5. **Recommendations** - Priority fixes and testing gaps
 
-Include clear code blocks, proper test structure, and detailed bug reports.
+# Testing Best Practices
 
-Remember: Your job is to identify bugs and create tests - NOT to fix the bugs. Provide clear, actionable reports that developers can use to improve code quality.
-"""
+1. **Test Naming** - Descriptive names explaining what is tested
+2. **AAA Pattern** - Arrange, Act, Assert
+3. **Independence** - Each test independent and idempotent
+4. **Edge Cases** - Test null, empty, min, max, invalid inputs
+5. **Error Cases** - Test all error paths
+6. **Mocking** - Mock external dependencies
+7. **Performance** - Include benchmarks for critical operations
+8. **Security** - Test for SQL injection, XSS, CSRF
+
+Remember: Your job is to identify bugs and create tests - NOT to fix bugs. Provide clear, actionable reports."""
 
     def _build_user_prompt(
         self,
@@ -469,18 +506,20 @@ Remember: Your job is to identify bugs and create tests - NOT to fix the bugs. P
         coverage_target: int,
         test_types: List[str]
     ) -> str:
-        """Build the user prompt with code to test"""
-
+        """Build user prompt with code to analyze and test"""
         test_types_str = ", ".join(test_types)
 
-        return f"""Analyze the following codebase, identify bugs, and generate a comprehensive test suite.
+        return f"""# QA Analysis Mission
 
-⚙️ TESTING REQUIREMENTS:
-- Test Framework: {test_framework} (auto-detect if "auto-detect")
-- Coverage Target: {coverage_target}%
-- Test Types: {test_types_str}
+Analyze the following codebase, identify bugs, and generate a comprehensive test suite.
 
-🎯 YOUR TASK:
+## Testing Requirements
+
+- **Test Framework**: {test_framework}
+- **Coverage Target**: {coverage_target}%
+- **Test Types**: {test_types_str}
+
+## Your Task
 
 1. **Analyze Code for Bugs:**
    - Logic errors
@@ -489,7 +528,6 @@ Remember: Your job is to identify bugs and create tests - NOT to fix the bugs. P
    - Performance issues
    - Edge cases not handled
    - Race conditions
-   - Memory leaks
 
 2. **Generate Test Suite:**
    - Unit tests for all functions/methods
@@ -497,29 +535,24 @@ Remember: Your job is to identify bugs and create tests - NOT to fix the bugs. P
    - E2E tests for user flows
    - Performance tests for critical operations
    - Edge case tests (null, empty, large inputs)
-   - Error handling tests
 
 3. **Create Bug Reports:**
    - Severity level (critical, high, medium, low)
-   - Bug type
-   - Location (file:line)
-   - Description
-   - Impact
+   - Bug type, location, description, impact
    - Reproduction steps
 
 4. **Generate Coverage Report:**
    - Estimated line coverage (%)
    - Untested critical paths
-   - Missing test types
 
 5. **Calculate Quality Score:**
    - Overall quality (0-100)
-   - Breakdown by category
 
-CODEBASE TO ANALYZE:
-{codebase}
+## Codebase to Analyze
 
-DELIVERABLES:
+{codebase[:4000]}
+
+## Deliverables
 
 1. Test Suite Code (pytest for Python, Jest for JavaScript)
 2. Bug Reports (severity, location, impact, reproduction)
@@ -534,14 +567,13 @@ Begin your QA analysis now:
         """
         Extract bug reports from QA analysis
 
-        Returns list of bugs with severity, type, location, description, impact.
+        Returns list of bugs with severity, type, location, description, impact
         """
+        import re
 
         bugs = []
 
         try:
-            import re
-
             # Pattern: ### Bug #N: Title
             bug_blocks = re.split(r'###\s+Bug\s+#\d+:', qa_report)
 
@@ -576,17 +608,10 @@ Begin your QA analysis now:
                 if bug:
                     bugs.append(bug)
 
-            logger.info(
-                "qa_engineer_agent.extracted_bugs",
-                count=len(bugs)
-            )
+            logger.info("extracted_bugs", count=len(bugs))
 
         except Exception as e:
-            logger.warning(
-                "qa_engineer_agent.extract_bugs.error",
-                error=str(e)
-            )
-            pass
+            logger.warning("extract_bugs_error", error=str(e))
 
         return bugs
 
@@ -596,13 +621,12 @@ Begin your QA analysis now:
 
         Score calculation:
         - Start at 100
-        - Deduct points for bugs based on severity
-        - Critical: -15 points each
-        - High: -10 points each
-        - Medium: -5 points each
-        - Low: -2 points each
+        - Deduct points for bugs based on severity:
+          - Critical: -15 points
+          - High: -10 points
+          - Medium: -5 points
+          - Low: -2 points
         """
-
         score = 100
 
         for bug in bugs:
@@ -619,29 +643,31 @@ Begin your QA analysis now:
         # Clamp to 0-100
         score = max(0, min(100, score))
 
+        logger.info("calculated_quality_score", score=score, bugs_count=len(bugs))
+
         return score
 
     def _estimate_coverage(self, qa_report: str) -> int:
         """
         Estimate test coverage from QA report
 
-        Looks for coverage percentage in report.
-        Returns 0 if not found.
+        Looks for coverage percentage in report
         """
+        import re
 
         try:
-            import re
-
             # Pattern: Coverage: 82% or Overall Coverage: 82%
             coverage_match = re.search(r'(?:Overall\s+)?Coverage:\s+(\d+)%', qa_report, re.IGNORECASE)
             if coverage_match:
-                return int(coverage_match.group(1))
+                coverage = int(coverage_match.group(1))
+                logger.info("estimated_coverage", coverage=coverage)
+                return coverage
 
         except Exception as e:
-            logger.warning(
-                "qa_engineer_agent.estimate_coverage.error",
-                error=str(e)
-            )
-            pass
+            logger.warning("estimate_coverage_error", error=str(e))
 
         return 0
+
+
+# Singleton instance
+qa_engineer_agent = QAEngineerAgent()
