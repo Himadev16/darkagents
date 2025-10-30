@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from backend.database.models import AgentExecution, Project
 from backend.agents.base_agent import BaseAgent
-from backend.lib.openrouter import openrouter_client
+from backend.services.claude_service import claude_service
 
 logger = structlog.get_logger()
 
@@ -319,10 +319,10 @@ class UIUXDesignerAgent(BaseAgent):
 
         # Call OpenRouter API
         try:
-            response = openrouter_client.chat.completions.create(
-                model="anthropic/claude-sonnet-4-20250514",
+            response = claude_service.generate(
+                
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    system=system_prompt,
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.5,  # More creative for design work
@@ -330,15 +330,13 @@ class UIUXDesignerAgent(BaseAgent):
             )
 
             # Extract response
-            content = response.choices[0].message.content
+            content = response["content"]
 
             # Extract token usage
-            tokens_used = response.usage.total_tokens if hasattr(response, 'usage') else 0
+            tokens_used = response["usage"]["total_tokens"]
 
             # Calculate cost (Claude Sonnet 4: $3/1M input, $15/1M output)
-            input_tokens = response.usage.prompt_tokens if hasattr(response, 'usage') else 0
-            output_tokens = response.usage.completion_tokens if hasattr(response, 'usage') else 0
-            cost_usd = (input_tokens * 3.0 / 1_000_000) + (output_tokens * 15.0 / 1_000_000)
+            cost_usd = response["cost_usd"]
 
             logger.info(
                 "openrouter_api_success",
