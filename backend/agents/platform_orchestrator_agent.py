@@ -499,14 +499,11 @@ Be comprehensive, actionable, and professional. This is the final deliverable.
         except Exception:
             db.rollback()
 
-        # Call OpenRouter API
+        # Call Claude service via OpenRouter API
         try:
             response = claude_service.generate(
-                
-                messages=[
-                    system=system_prompt,
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
                 temperature=0.3,  # Lower for precise, structured output
                 max_tokens=12000
             )

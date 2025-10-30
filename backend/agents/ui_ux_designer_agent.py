@@ -317,14 +317,11 @@ class UIUXDesignerAgent(BaseAgent):
         except Exception:
             db.rollback()
 
-        # Call OpenRouter API
+        # Call Claude service via OpenRouter API
         try:
             response = claude_service.generate(
-                
-                messages=[
-                    system=system_prompt,
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
                 temperature=0.5,  # More creative for design work
                 max_tokens=12000
             )

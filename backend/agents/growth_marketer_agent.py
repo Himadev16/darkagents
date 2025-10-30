@@ -421,14 +421,11 @@ Be creative with copy but professional and conversion-focused.
         except Exception:
             db.rollback()
 
-        # Call OpenRouter API
+        # Call Claude service via OpenRouter API
         try:
             response = claude_service.generate(
-                
-                messages=[
-                    system=system_prompt,
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
                 temperature=0.7,  # Higher for creative marketing copy
                 max_tokens=12000
             )
