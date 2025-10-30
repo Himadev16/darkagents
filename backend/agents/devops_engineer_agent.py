@@ -25,7 +25,7 @@ import structlog
 import time
 
 from backend.services.claude_service import claude_service
-from backend.models import Project, AgentExecution
+from backend.database.models import Project, AgentExecution
 
 logger = structlog.get_logger(__name__)
 
